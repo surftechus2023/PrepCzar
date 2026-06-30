@@ -1,0 +1,529 @@
+'use client';
+
+import { Suspense, useState, useEffect, useCallback } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import {
+  ChevronRight, ChevronLeft, CheckCircle, XCircle, Volume2, Mic,
+  MicOff, VolumeX, Clock, BarChart3, RefreshCw, Trophy, ArrowLeft
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/lib/supabase';
+import { hasActiveTrackAccess } from '@/lib/access';
+import { useVoice, parseVoiceAnswer } from '@/hooks/useVoice';
+import type { Question, Exam, PracticeSession } from '@/types/database';
+import Link from 'next/link';
+
+type AnswerMap = Record<string, 'a' | 'b' | 'c' | 'd'>;
+
+const LANG_MAP: Record<string, 'en' | 'es' | 'fr'> = { en: 'en', es: 'es', fr: 'fr' };
+const VOICE_LANG_MAP: Record<string, string> = { en: 'en-US', es: 'es-ES', fr: 'fr-FR' };
+
+export default function MCQPracticePage() {
+  return (
+    <Suspense fallback={<PracticeLoading />}>
+      <MCQPracticeContent />
+    </Suspense>
+  );
+}
+
+function PracticeLoading() {
+  return (
+    <div className="flex items-center justify-center h-full py-24">
+      <RefreshCw className="w-8 h-8 animate-spin text-primary" />
+    </div>
+  );
+}
+
+function MCQPracticeContent() {
+  const searchParams = useSearchParams();
+  const examId = searchParams.get('exam');
+  const sessionId = searchParams.get('session');
+  const router = useRouter();
+  const { profile } = useAuth();
+
+  const [exam, setExam] = useState<Exam | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [answers, setAnswers] = useState<AnswerMap>({});
+  const [showRationale, setShowRationale] = useState(false);
+  const [session, setSession] = useState<PracticeSession | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [completed, setCompleted] = useState(false);
+  const [lang, setLang] = useState<'en' | 'es' | 'fr'>('en');
+
+  const { voiceEnabled, setVoiceEnabled, speaking, listening, supported, speak, stopSpeaking, startListening, stopListening } = useVoice();
+
+  useEffect(() => {
+    if (profile?.preferred_language) {
+      setLang(LANG_MAP[profile.preferred_language] || 'en');
+    }
+  }, [profile]);
+
+  useEffect(() => {
+    if (profile && (examId || sessionId)) {
+      initialize();
+    }
+  }, [profile, examId, sessionId]);
+
+  async function initialize() {
+    if (!profile) return;
+
+    let targetTrackId = examId;
+
+    // Resume existing session
+    if (sessionId) {
+      const { data: sessData } = await supabase
+        .from('practice_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .eq('user_id', profile.id)
+        .maybeSingle();
+      const sess = sessData as PracticeSession | null;
+      if (sess) {
+        setSession(sess);
+        targetTrackId = sess.exam_track_id || sess.exam_id;
+        if (sess.completed) setCompleted(true);
+
+        // Load existing responses
+        const { data: responseData } = await supabase
+          .from('responses')
+          .select('*')
+          .eq('session_id', sessionId);
+
+        if (responseData) {
+          const map: AnswerMap = {};
+          (responseData as any[]).forEach((r) => { map[r.question_id] = r.selected_answer; });
+          setAnswers(map);
+        }
+      }
+    }
+
+    if (!targetTrackId) return;
+
+    const allowed = await hasActiveTrackAccess(profile.id, targetTrackId);
+    if (!allowed) {
+      router.push('/dashboard/subscriptions');
+      return;
+    }
+
+    // Load track name (try exam_tracks first, fall back to exams)
+    const { data: trackData } = await supabase
+      .from('exam_tracks')
+      .select('id, name')
+      .eq('id', targetTrackId)
+      .maybeSingle();
+
+    if (trackData) {
+      setExam({ id: trackData.id, name: trackData.name } as any);
+    } else {
+      const { data: examData } = await supabase.from('exams').select('*').eq('id', targetTrackId).maybeSingle();
+      setExam(examData);
+    }
+
+    // Load questions by exam_track_id
+    const { data: questionsData } = await supabase
+      .from('questions')
+      .select('*')
+      .eq('exam_track_id', targetTrackId)
+      .eq('active', true)
+      .eq('reviewed', true)
+      .limit(100);
+
+    if (questionsData && questionsData.length > 0) {
+      const shuffled = [...questionsData].sort(() => Math.random() - 0.5);
+      setQuestions(shuffled);
+    }
+
+    // Create new session if needed
+    if (!sessionId && profile) {
+      const { data: newSession } = await supabase
+        .from('practice_sessions')
+        .insert({
+          user_id: profile.id,
+          exam_track_id: targetTrackId,
+          mode: 'mcq',
+        })
+        .select()
+        .single();
+      if (newSession) setSession(newSession);
+    }
+
+    setLoading(false);
+  }
+
+  const currentQuestion = questions[currentIdx];
+  const currentAnswer = currentQuestion ? answers[currentQuestion.id] : undefined;
+  const isAnswered = !!currentAnswer;
+
+  function getQuestionText(q: Question) {
+    return lang === 'es' ? q.question_es || q.question_en
+         : lang === 'fr' ? q.question_fr || q.question_en
+         : q.question_en;
+  }
+
+  function getOptionText(q: Question, opt: 'a' | 'b' | 'c' | 'd') {
+    const key = `option_${opt}_${lang}` as keyof Question;
+    const fallback = `option_${opt}_en` as keyof Question;
+    return (q[key] as string) || (q[fallback] as string) || '';
+  }
+
+  function getRationale(q: Question) {
+    return lang === 'es' ? q.rationale_es || q.rationale_en
+         : lang === 'fr' ? q.rationale_fr || q.rationale_en
+         : q.rationale_en;
+  }
+
+  async function handleAnswer(option: 'a' | 'b' | 'c' | 'd') {
+    if (isAnswered || !currentQuestion || !session) return;
+
+    const isCorrect = option === currentQuestion.correct_option;
+    const newAnswers = { ...answers, [currentQuestion.id]: option };
+    setAnswers(newAnswers);
+    setShowRationale(true);
+
+    await supabase.from('responses').insert({
+      session_id: session.id,
+      question_id: currentQuestion.id,
+      selected_answer: option,
+      is_correct: isCorrect,
+    });
+
+    if (voiceEnabled) {
+      const feedback = isCorrect
+        ? `Correct! ${getRationale(currentQuestion)}`
+        : `Incorrect. The correct answer is ${currentQuestion.correct_option.toUpperCase()}. ${getRationale(currentQuestion)}`;
+      speak(feedback, VOICE_LANG_MAP[lang]);
+    }
+  }
+
+  async function handleNext() {
+    stopSpeaking();
+    setShowRationale(false);
+    if (currentIdx < questions.length - 1) {
+      setCurrentIdx(currentIdx + 1);
+    } else {
+      await finishSession();
+    }
+  }
+
+  async function finishSession() {
+    if (!session || !profile) return;
+
+    const total = Object.keys(answers).length;
+    const correct = questions.filter(q => answers[q.id] === q.correct_option).length;
+    const scorePercent = total > 0 ? Math.round((correct / total) * 100) : 0;
+
+    await supabase.from('practice_sessions').update({
+      completed: true,
+      completed_at: new Date().toISOString(),
+      score_percent: scorePercent,
+    }).eq('id', session.id);
+
+    await supabase.from('scores').insert({
+      user_id: profile.id,
+      exam_track_id: session.exam_track_id || undefined,
+      exam_id: session.exam_id || undefined,
+      score: scorePercent,
+      weak_topics: questions
+        .filter(q => answers[q.id] !== q.correct_option && q.topic_id)
+        .map(q => q.topic_id)
+        .filter((topicId, index, all) => all.indexOf(topicId) === index),
+    });
+
+    setCompleted(true);
+
+    if (voiceEnabled) {
+      speak(`Session complete! You scored ${scorePercent}% with ${correct} out of ${total} questions correct.`, VOICE_LANG_MAP[lang]);
+    }
+  }
+
+  function handleVoiceListen() {
+    if (!currentQuestion || isAnswered) return;
+    startListening((transcript) => {
+      const answer = parseVoiceAnswer(transcript);
+      if (answer) handleAnswer(answer);
+    });
+  }
+
+  function speakQuestion() {
+    if (!currentQuestion) return;
+    const text = `Question ${currentIdx + 1}. ${getQuestionText(currentQuestion)}.
+      Option A: ${getOptionText(currentQuestion, 'a')}.
+      Option B: ${getOptionText(currentQuestion, 'b')}.
+      Option C: ${getOptionText(currentQuestion, 'c')}.
+      Option D: ${getOptionText(currentQuestion, 'd')}.`;
+    speak(text, VOICE_LANG_MAP[lang]);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full py-24">
+        <div className="text-center">
+          <RefreshCw className="w-8 h-8 animate-spin text-primary mx-auto mb-3" />
+          <p className="text-muted-foreground">Loading practice session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!examId && !sessionId) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto text-center py-24">
+        <h2 className="text-2xl font-bold mb-4">Select an Exam</h2>
+        <p className="text-muted-foreground mb-6">Please select an exam from your dashboard.</p>
+        <Button asChild><Link href="/dashboard">Back to Dashboard</Link></Button>
+      </div>
+    );
+  }
+
+  if (questions.length === 0 && !loading) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto text-center py-24">
+        <BookOpenIcon className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4" />
+        <h2 className="text-2xl font-bold mb-4">No Questions Available</h2>
+        <p className="text-muted-foreground mb-6">
+          No practice questions are available for this exam yet. Check back soon!
+        </p>
+        <Button asChild><Link href="/dashboard">Back to Dashboard</Link></Button>
+      </div>
+    );
+  }
+
+  if (completed) {
+    const total = questions.filter(q => q.id in answers).length;
+    const correct = questions.filter(q => answers[q.id] === q.correct_option).length;
+    const score = total > 0 ? Math.round((correct / total) * 100) : 0;
+
+    return (
+      <div className="p-6 max-w-2xl mx-auto">
+        <div className="text-center py-12">
+          <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
+            <Trophy className="w-10 h-10 text-primary" />
+          </div>
+          <h2 className="text-3xl font-bold text-foreground mb-2">Session Complete!</h2>
+          <p className="text-muted-foreground mb-8">Here&apos;s how you did</p>
+
+          <div className="grid grid-cols-3 gap-4 mb-8">
+            <div className="bg-card border border-border rounded-xl p-4">
+              <div className="text-3xl font-bold text-foreground">{score}%</div>
+              <div className="text-sm text-muted-foreground">Score</div>
+            </div>
+            <div className="bg-card border border-border rounded-xl p-4">
+              <div className="text-3xl font-bold text-emerald-600">{correct}</div>
+              <div className="text-sm text-muted-foreground">Correct</div>
+            </div>
+            <div className="bg-card border border-border rounded-xl p-4">
+              <div className="text-3xl font-bold text-rose-600">{total - correct}</div>
+              <div className="text-sm text-muted-foreground">Incorrect</div>
+            </div>
+          </div>
+
+          <Progress value={score} className="h-3 mb-8" />
+
+          <div className="flex gap-3 justify-center">
+            <Button asChild variant="outline">
+              <Link href="/dashboard">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Dashboard
+              </Link>
+            </Button>
+            <Button onClick={() => router.push(`/dashboard/practice/mcq?exam=${session?.exam_track_id || session?.exam_id}`)}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              New Session
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const progress = ((currentIdx) / questions.length) * 100;
+  const options: Array<'a' | 'b' | 'c' | 'd'> = ['a', 'b', 'c', 'd'];
+
+  return (
+    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/dashboard">
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Exit
+            </Link>
+          </Button>
+          <div>
+            <h1 className="font-semibold text-foreground text-sm">{exam?.name}</h1>
+            <p className="text-xs text-muted-foreground">MCQ Practice</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Language selector */}
+          <div className="flex gap-1">
+            {(['en', 'es', 'fr'] as const).map((l) => (
+              <button
+                key={l}
+                onClick={() => setLang(l)}
+                className={`text-xs px-2 py-1 rounded-md font-medium transition-colors ${
+                  lang === l ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'
+                }`}
+              >
+                {l.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          {/* Voice controls */}
+          {supported && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setVoiceEnabled(!voiceEnabled)}
+              className={voiceEnabled ? 'text-primary' : 'text-muted-foreground'}
+            >
+              {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Progress */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
+          <span>Question {currentIdx + 1} of {questions.length}</span>
+          <span>{Object.keys(answers).length} answered</span>
+        </div>
+        <Progress value={progress} className="h-2" />
+      </div>
+
+      {/* Question card */}
+      {currentQuestion && (
+        <Card className="border-border mb-4">
+          <CardContent className="p-6">
+            <div className="flex items-start justify-between gap-4 mb-6">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="capitalize">{currentQuestion.difficulty}</Badge>
+              </div>
+              {voiceEnabled && (
+                <Button variant="ghost" size="sm" onClick={speakQuestion} disabled={speaking}>
+                  <Volume2 className={`w-4 h-4 ${speaking ? 'text-primary animate-pulse-slow' : ''}`} />
+                </Button>
+              )}
+            </div>
+
+            <p className="text-foreground font-medium leading-relaxed mb-6 text-lg">
+              {getQuestionText(currentQuestion)}
+            </p>
+
+            {/* Options */}
+            <div className="space-y-3">
+              {options.map((opt) => {
+                const text = getOptionText(currentQuestion, opt);
+                const isSelected = currentAnswer === opt;
+                const isCorrect = currentQuestion.correct_option === opt;
+                const showResult = isAnswered;
+
+                let variant = 'outline';
+                let className = 'w-full text-left justify-start p-4 h-auto font-normal transition-all';
+
+                if (showResult) {
+                  if (isCorrect) {
+                    className += ' bg-emerald-50 border-emerald-400 text-emerald-800 dark:bg-emerald-950 dark:border-emerald-600 dark:text-emerald-300';
+                  } else if (isSelected && !isCorrect) {
+                    className += ' bg-red-50 border-red-400 text-red-800 dark:bg-red-950 dark:border-red-600 dark:text-red-300';
+                  } else {
+                    className += ' opacity-60';
+                  }
+                } else {
+                  className += ' hover:border-primary/50 hover:bg-primary/5';
+                }
+
+                return (
+                  <button
+                    key={opt}
+                    onClick={() => handleAnswer(opt)}
+                    disabled={isAnswered}
+                    className={`${className} flex items-center gap-3 rounded-lg border px-4 py-3`}
+                  >
+                    <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0 ${
+                      showResult && isCorrect ? 'bg-emerald-500 text-white'
+                      : showResult && isSelected ? 'bg-red-500 text-white'
+                      : 'bg-secondary text-secondary-foreground'
+                    }`}>
+                      {opt.toUpperCase()}
+                    </span>
+                    <span className="text-sm">{text}</span>
+                    {showResult && isCorrect && <CheckCircle className="w-4 h-4 text-emerald-600 ml-auto flex-shrink-0" />}
+                    {showResult && isSelected && !isCorrect && <XCircle className="w-4 h-4 text-red-600 ml-auto flex-shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Rationale */}
+      {showRationale && currentQuestion && (
+        <Card className="border-primary/30 bg-primary/5 mb-4">
+          <CardContent className="p-5">
+            <div className="flex items-center gap-2 mb-3">
+              <CheckCircle className="w-4 h-4 text-primary" />
+              <span className="font-semibold text-foreground text-sm">Rationale</span>
+            </div>
+            <p className="text-sm text-foreground leading-relaxed">
+              {getRationale(currentQuestion)}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Navigation */}
+      <div className="flex items-center justify-between">
+        <Button
+          variant="outline"
+          onClick={() => { stopSpeaking(); setCurrentIdx(Math.max(0, currentIdx - 1)); setShowRationale(!!answers[questions[Math.max(0, currentIdx - 1)]?.id]); }}
+          disabled={currentIdx === 0}
+        >
+          <ChevronLeft className="w-4 h-4 mr-1" />
+          Previous
+        </Button>
+
+        <div className="flex gap-2">
+          {voiceEnabled && supported && !isAnswered && (
+            <Button
+              variant="outline"
+              onClick={listening ? stopListening : handleVoiceListen}
+              className={listening ? 'text-primary border-primary' : ''}
+            >
+              {listening ? <MicOff className="w-4 h-4 mr-1.5" /> : <Mic className="w-4 h-4 mr-1.5" />}
+              {listening ? 'Listening...' : 'Voice Answer'}
+            </Button>
+          )}
+
+          {isAnswered && (
+            <Button onClick={handleNext}>
+              {currentIdx < questions.length - 1 ? (
+                <>Next <ChevronRight className="w-4 h-4 ml-1" /></>
+              ) : (
+                <>Finish <Trophy className="w-4 h-4 ml-1" /></>
+              )}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BookOpenIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+    </svg>
+  );
+}

@@ -1,0 +1,295 @@
+'use client';
+
+import { Suspense, useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import {
+  ChevronRight, ArrowLeft, RefreshCw, Trophy, Send, BookOpen, ChevronDown
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/lib/supabase';
+import { hasActiveTrackAccess } from '@/lib/access';
+import type { CaseVignette, Exam, PracticeSession } from '@/types/database';
+
+export default function VignettesPage() {
+  return (
+    <Suspense fallback={<VignettesLoading />}>
+      <VignettesContent />
+    </Suspense>
+  );
+}
+
+function VignettesLoading() {
+  return (
+    <div className="flex items-center justify-center py-24">
+      <RefreshCw className="w-8 h-8 animate-spin text-primary" />
+    </div>
+  );
+}
+
+function VignettesContent() {
+  const searchParams = useSearchParams();
+  const examId = searchParams.get('exam');
+  const router = useRouter();
+  const { profile } = useAuth();
+
+  const [exam, setExam] = useState<Exam | null>(null);
+  const [vignettes, setVignettes] = useState<CaseVignette[]>([]);
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [answer, setAnswer] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [completed, setCompleted] = useState(false);
+  const [lang, setLang] = useState<'en' | 'es' | 'fr'>('en');
+  const [showIdeal, setShowIdeal] = useState(false);
+  const [session, setSession] = useState<PracticeSession | null>(null);
+
+  useEffect(() => {
+    if (profile?.preferred_language) setLang((profile.preferred_language as any) || 'en');
+  }, [profile]);
+
+  useEffect(() => {
+    if (profile && examId) loadData();
+  }, [profile, examId]);
+
+  async function loadData() {
+    if (!examId || !profile) return;
+
+    const allowed = await hasActiveTrackAccess(profile.id, examId);
+    if (!allowed) {
+      router.push('/dashboard/subscriptions');
+      return;
+    }
+
+    const [trackRes, vigRes] = await Promise.all([
+      supabase.from('exam_tracks').select('id, name').eq('id', examId).maybeSingle(),
+      supabase.from('case_vignettes').select('*').eq('exam_track_id', examId).eq('active', true).eq('reviewed', true).limit(10),
+    ]);
+    if (trackRes.data) {
+      setExam({ id: trackRes.data.id, name: trackRes.data.name } as any);
+    } else {
+      const examRes = await supabase.from('exams').select('*').eq('id', examId).maybeSingle();
+      setExam(examRes.data);
+    }
+    if (vigRes.data) setVignettes([...vigRes.data].sort(() => Math.random() - 0.5));
+
+    const { data: newSession } = await supabase
+      .from('practice_sessions')
+      .insert({
+        user_id: profile.id,
+        exam_track_id: examId,
+        mode: 'vignette',
+      })
+      .select()
+      .single();
+    if (newSession) setSession(newSession);
+
+    setLoading(false);
+  }
+
+  const current = vignettes[currentIdx];
+
+  function get(field: string, card: CaseVignette): string {
+    const key = `${field}_${lang}` as keyof CaseVignette;
+    const fallback = `${field}_en` as keyof CaseVignette;
+    return (card[key] as string) || (card[fallback] as string) || '';
+  }
+
+  function handleSubmit() {
+    if (!answer.trim()) return;
+    setSubmitted(true);
+  }
+
+  async function handleNext() {
+    setAnswer('');
+    setSubmitted(false);
+    setShowIdeal(false);
+    if (currentIdx < vignettes.length - 1) {
+      setCurrentIdx(currentIdx + 1);
+    } else {
+      if (session && profile) {
+        await supabase.from('practice_sessions').update({
+          completed: true,
+          completed_at: new Date().toISOString(),
+          score_percent: 100,
+        }).eq('id', session.id);
+
+        await supabase.from('scores').insert({
+          user_id: profile.id,
+          exam_track_id: examId,
+          score: 100,
+          weak_topics: [],
+        });
+      }
+      setCompleted(true);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <RefreshCw className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (completed) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto text-center py-12">
+        <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
+          <Trophy className="w-10 h-10 text-primary" />
+        </div>
+        <h2 className="text-3xl font-bold text-foreground mb-2">Session Complete!</h2>
+        <p className="text-muted-foreground mb-8">You reviewed {vignettes.length} case vignettes</p>
+        <div className="flex gap-3 justify-center">
+          <Button variant="outline" asChild>
+            <Link href="/dashboard"><ArrowLeft className="w-4 h-4 mr-2" />Dashboard</Link>
+          </Button>
+          <Button onClick={() => { setCurrentIdx(0); setCompleted(false); setAnswer(''); setSubmitted(false); }}>
+            <RefreshCw className="w-4 h-4 mr-2" />New Session
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (vignettes.length === 0) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto text-center py-24">
+        <BookOpen className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4" />
+        <h2 className="text-2xl font-bold mb-4">No Vignettes Available</h2>
+        <p className="text-muted-foreground mb-6">Case vignettes for this exam are coming soon.</p>
+        <Button asChild><Link href="/dashboard">Back to Dashboard</Link></Button>
+      </div>
+    );
+  }
+
+  const progress = (currentIdx / vignettes.length) * 100;
+
+  return (
+    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/dashboard"><ArrowLeft className="w-4 h-4 mr-1" />Exit</Link>
+          </Button>
+          <div>
+            <h1 className="font-semibold text-foreground text-sm">{exam?.name}</h1>
+            <p className="text-xs text-muted-foreground">Case Vignette Coaching</p>
+          </div>
+        </div>
+
+        <div className="flex gap-1">
+          {(['en', 'es', 'fr'] as const).map((l) => (
+            <button key={l} onClick={() => setLang(l)}
+              className={`text-xs px-2 py-1 rounded-md font-medium transition-colors ${lang === l ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}
+            >{l.toUpperCase()}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Progress */}
+      <div className="mb-6">
+        <div className="flex justify-between text-sm text-muted-foreground mb-2">
+          <span>Case {currentIdx + 1} of {vignettes.length}</span>
+        </div>
+        <Progress value={progress} className="h-2" />
+      </div>
+
+      {current && (
+        <>
+          {/* Case scenario */}
+          <Card className="mb-4 border-border">
+            <CardContent className="p-6">
+              <Badge variant="secondary" className="mb-4">Clinical Case</Badge>
+              <p className="text-foreground leading-relaxed whitespace-pre-line">
+                {get('case', current)}
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Prompt */}
+          <Card className="mb-4 border-primary/30 bg-primary/5">
+            <CardContent className="p-5">
+              <p className="font-semibold text-foreground mb-1 text-sm">Your Task:</p>
+              <p className="text-foreground">{get('prompt', current)}</p>
+            </CardContent>
+          </Card>
+
+          {/* Answer area */}
+          {!submitted ? (
+            <div className="mb-4">
+              <Textarea
+                placeholder="Write your response here. Consider the key clinical factors, ethical considerations, and your recommended approach..."
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                className="min-h-[160px] mb-3 resize-none"
+              />
+              <Button onClick={handleSubmit} disabled={!answer.trim()} className="w-full">
+                <Send className="w-4 h-4 mr-2" />
+                Submit Response
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4 mb-4">
+              {/* Student's answer */}
+              <Card className="border-border">
+                <CardContent className="p-5">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Your Response</p>
+                  <p className="text-foreground text-sm leading-relaxed">{answer}</p>
+                </CardContent>
+              </Card>
+
+              {/* Coaching feedback */}
+              <Card className="border-emerald-300 bg-emerald-50 dark:bg-emerald-950 dark:border-emerald-800">
+                <CardContent className="p-5">
+                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider mb-3">
+                    AI Coaching Feedback
+                  </p>
+                  <p className="text-emerald-900 dark:text-emerald-200 text-sm leading-relaxed">
+                    {get('coaching_feedback', current)}
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* Ideal answer (collapsible) */}
+              <div>
+                <button
+                  onClick={() => setShowIdeal(!showIdeal)}
+                  className="flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+                >
+                  <ChevronDown className={`w-4 h-4 transition-transform ${showIdeal ? 'rotate-180' : ''}`} />
+                  {showIdeal ? 'Hide' : 'Show'} Ideal Answer
+                </button>
+                {showIdeal && (
+                  <Card className="mt-3 border-primary/30 bg-primary/5">
+                    <CardContent className="p-5">
+                      <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-3">Ideal Answer</p>
+                      <p className="text-foreground text-sm leading-relaxed whitespace-pre-line">
+                        {get('ideal_answer', current)}
+                      </p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              <Button onClick={handleNext} className="w-full">
+                {currentIdx < vignettes.length - 1 ? (
+                  <>Next Case <ChevronRight className="w-4 h-4 ml-2" /></>
+                ) : (
+                  <>Complete Session <Trophy className="w-4 h-4 ml-2" /></>
+                )}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

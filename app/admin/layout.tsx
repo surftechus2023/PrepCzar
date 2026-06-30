@@ -1,0 +1,97 @@
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { Loader2 } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import Link from 'next/link';
+import { BookOpen, Users, LayoutDashboard, HelpCircle, Layers, MessageSquare, Settings, Sparkles, ClipboardCheck } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { cn } from '@/lib/utils';
+
+const adminNav = [
+  { icon: LayoutDashboard, label: 'Overview', href: '/admin' },
+  { icon: BookOpen, label: 'Exams', href: '/admin/exams' },
+  { icon: HelpCircle, label: 'Questions', href: '/admin/questions' },
+  { icon: Layers, label: 'Flashcards', href: '/admin/flashcards' },
+  { icon: MessageSquare, label: 'Vignettes', href: '/admin/vignettes' },
+  { icon: Sparkles, label: 'AI Generate', href: '/admin/generate' },
+  { icon: Sparkles, label: 'Question Gen', href: '/admin/content-generation' },
+  { icon: ClipboardCheck, label: 'AI Review', href: '/admin/review-questions' },
+  { icon: Users, label: 'Users', href: '/admin/users' },
+];
+
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const { user, profile, loading } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (!loading) {
+      if (!user) router.push('/auth/login');
+      else if (profile && profile.role !== 'admin') router.push('/dashboard');
+    }
+  }, [loading, user, profile, router]);
+
+  if (loading || !profile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (profile.role !== 'admin') return null;
+
+  return (
+    <div className="flex h-screen bg-background overflow-hidden">
+      {/* Sidebar */}
+      <aside className="w-60 flex flex-col bg-slate-900 border-r border-slate-800">
+        <div className="flex items-center gap-2 px-4 h-16 border-b border-slate-800">
+          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+            <BookOpen className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <p className="font-bold text-white text-sm">PrepCzar</p>
+            <p className="text-xs text-slate-400">Admin Panel</p>
+          </div>
+        </div>
+
+        <nav className="flex-1 py-4 overflow-y-auto">
+          <div className="space-y-0.5 px-2">
+            {adminNav.map((item) => {
+              const Icon = item.icon;
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-blue-600 text-white'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  )}
+                >
+                  <Icon className="w-4 h-4 flex-shrink-0" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+
+        <div className="p-3 border-t border-slate-800">
+          <Link href="/dashboard" className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors px-3 py-2">
+            <Settings className="w-4 h-4" />
+            Back to Dashboard
+          </Link>
+        </div>
+      </aside>
+
+      <main className="flex-1 overflow-y-auto bg-background">
+        {children}
+      </main>
+    </div>
+  );
+}
