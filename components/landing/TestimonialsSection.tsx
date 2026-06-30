@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { Star, Quote } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useLang, TranslationKey } from '@/lib/i18n';
@@ -84,9 +85,11 @@ export function TestimonialsSection() {
 
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full overflow-hidden bg-secondary flex-shrink-0">
-                  <img
+                  <Image
                     src={item.image}
                     alt={t(item.nameKey)}
+                    width={40}
+                    height={40}
                     className="w-full h-full object-cover"
                   />
                 </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useCallback, useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -56,11 +56,7 @@ function FlashcardsContent() {
     }
   }, [profile]);
 
-  useEffect(() => {
-    if (profile && examId) loadData();
-  }, [profile, examId]);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     if (!examId || !profile) return;
 
     const allowed = await hasActiveTrackAccess(profile.id, examId);
@@ -96,7 +92,11 @@ function FlashcardsContent() {
     if (newSession) setSession(newSession);
 
     setLoading(false);
-  }
+  }, [examId, profile, router]);
+
+  useEffect(() => {
+    if (profile && examId) loadData();
+  }, [loadData, profile, examId]);
 
   const currentCard = flashcards[currentIdx];
 

@@ -63,13 +63,7 @@ function MCQPracticeContent() {
     }
   }, [profile]);
 
-  useEffect(() => {
-    if (profile && (examId || sessionId)) {
-      initialize();
-    }
-  }, [profile, examId, sessionId]);
-
-  async function initialize() {
+  const initialize = useCallback(async () => {
     if (!profile) return;
 
     let targetTrackId = examId;
@@ -153,7 +147,13 @@ function MCQPracticeContent() {
     }
 
     setLoading(false);
-  }
+  }, [examId, profile, router, sessionId]);
+
+  useEffect(() => {
+    if (profile && (examId || sessionId)) {
+      initialize();
+    }
+  }, [initialize, profile, examId, sessionId]);
 
   const currentQuestion = questions[currentIdx];
   const currentAnswer = currentQuestion ? answers[currentQuestion.id] : undefined;

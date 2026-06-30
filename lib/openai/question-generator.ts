@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { openai } from './client';
+import { getOpenAIClient } from './client';
 
 export const QUESTION_GENERATOR_MODEL = 'gpt-4o-mini';
 export const QUESTION_PROMPT_VERSION = 'mcq-quality-v1';
@@ -55,6 +55,7 @@ function formatMix(mix: Record<string, number>) {
 
 export async function generateQuestions(input: QuestionGenerationInput): Promise<GeneratedQuestion[]> {
   const parsedInput = questionGenerationInputSchema.parse(input);
+  const openai = getOpenAIClient();
 
   const prompt = `Generate ${parsedInput.quantity} original multiple-choice exam-prep questions.
 

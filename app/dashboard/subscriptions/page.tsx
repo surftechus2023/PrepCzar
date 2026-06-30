@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   CreditCard, CheckCircle, Brain, Heart, MessageSquare, ClipboardList,
@@ -48,15 +48,13 @@ export default function SubscriptionsPage() {
   const [checkingOut, setCheckingOut] = useState<string | null>(null);
   const { toast } = useToast();
 
-  useEffect(() => {
-    if (profile) loadData();
-  }, [profile]);
+  const loadData = useCallback(async () => {
+    if (!profile) return;
 
-  async function loadData() {
     const [catsRes, tracksRes, subsRes] = await Promise.all([
       supabase.from('exam_categories').select('*').order('display_order'),
       supabase.from('exam_tracks').select('*').eq('active', true).order('display_order'),
-      supabase.from('subscriptions').select('*').eq('user_id', profile!.id),
+      supabase.from('subscriptions').select('*').eq('user_id', profile.id),
     ]);
 
     const cats = (catsRes.data || []) as ExamCategory[];
@@ -74,7 +72,11 @@ export default function SubscriptionsPage() {
 
     setCategories(cats.map(c => ({ ...c, tracks: tracksByCat[c.id] || [] })));
     setLoading(false);
-  }
+  }, [profile]);
+
+  useEffect(() => {
+    if (profile) loadData();
+  }, [loadData, profile]);
 
   async function handleSubscribe(track: TrackWithSub) {
     setCheckingOut(track.id);

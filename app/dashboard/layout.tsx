@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Loader2, Menu } from 'lucide-react';
 import { DashboardSidebar } from '@/components/dashboard/DashboardSidebar';
@@ -25,16 +25,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [loading, user, router]);
 
-  useEffect(() => {
-    if (!user || loading) return;
-    if (UNGUARDED_PATHS.some((p) => pathname.startsWith(p))) {
-      setSubChecked(true);
-      return;
-    }
-    checkSubscription();
-  }, [user, loading, pathname]);
-
-  async function checkSubscription() {
+  const checkSubscription = useCallback(async () => {
     if (!user) return;
     const { data } = await getActiveTrackAccess(user.id);
 
@@ -43,7 +34,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       return;
     }
     setSubChecked(true);
-  }
+  }, [router, user]);
+
+  useEffect(() => {
+    if (!user || loading) return;
+    if (UNGUARDED_PATHS.some((p) => pathname.startsWith(p))) {
+      setSubChecked(true);
+      return;
+    }
+    checkSubscription();
+  }, [checkSubscription, user, loading, pathname]);
 
   if (loading || (!subChecked && !UNGUARDED_PATHS.some((p) => pathname.startsWith(p)))) {
     return (

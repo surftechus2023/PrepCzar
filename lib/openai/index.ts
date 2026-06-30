@@ -1,7 +1,8 @@
-export { openai } from './client';
-import { openai } from './client';
+export { getOpenAIClient } from './client';
+import { getOpenAIClient } from './client';
 
 export async function generateMCQs(examName: string, topicTitle: string, count: number = 10) {
+  const openai = getOpenAIClient();
   const prompt = `Generate ${count} multiple choice questions for the ${examName} exam on the topic "${topicTitle}".
 
 Return a JSON array with this exact structure for each question:
@@ -44,6 +45,7 @@ Ensure questions are original, clinically accurate, appropriately difficult, and
 }
 
 export async function generateFlashcards(examName: string, topicTitle: string, count: number = 10) {
+  const openai = getOpenAIClient();
   const prompt = `Generate ${count} flashcards for the ${examName} exam on the topic "${topicTitle}".
 
 Return a JSON array with this exact structure:
@@ -72,6 +74,7 @@ Make flashcards concise, memorable, original, and exam-relevant. Do not copy pro
 }
 
 export async function generateVignettes(examName: string, topicTitle: string, count: number = 5) {
+  const openai = getOpenAIClient();
   const prompt = `Generate ${count} clinical case vignettes for the ${examName} exam on the topic "${topicTitle}".
 
 Return a JSON array with this exact structure:

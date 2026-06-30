@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { BarChart3, TrendingUp, Target, Clock, Trophy } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -26,22 +26,20 @@ export default function ProgressPage() {
   const [sessions, setSessions] = useState<SessionWithTrack[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (profile) loadData();
-  }, [profile]);
+  const loadData = useCallback(async () => {
+    if (!profile) return;
 
-  async function loadData() {
     const [scoresRes, sessionsRes] = await Promise.all([
       supabase
         .from('scores')
         .select('*, exam_track:exam_tracks(*)')
-        .eq('user_id', profile!.id)
+        .eq('user_id', profile.id)
         .order('created_at', { ascending: false })
         .limit(30),
       supabase
         .from('practice_sessions')
         .select('*, exam_track:exam_tracks(*)')
-        .eq('user_id', profile!.id)
+        .eq('user_id', profile.id)
         .order('started_at', { ascending: false })
         .limit(20),
     ]);
@@ -49,7 +47,11 @@ export default function ProgressPage() {
     setScores((scoresRes.data as ScoreWithTrack[]) || []);
     setSessions((sessionsRes.data as SessionWithTrack[]) || []);
     setLoading(false);
-  }
+  }, [profile]);
+
+  useEffect(() => {
+    if (profile) loadData();
+  }, [loadData, profile]);
 
   const completedSessions = sessions.filter(s => s.completed);
   const avgScore = scores.length > 0

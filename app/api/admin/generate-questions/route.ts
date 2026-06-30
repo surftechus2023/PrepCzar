@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ error: 'OPENAI_API_KEY is not configured.' }, { status: 503 });
+      return NextResponse.json({ error: 'OPENAI_API_KEY is not configured' }, { status: 500 });
     }
 
     const body = parsed.data;

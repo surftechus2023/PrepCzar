@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   BookOpen, Layers, MessageSquare, BarChart3, Clock, TrendingUp,
@@ -27,11 +27,7 @@ export default function DashboardPage() {
   const [scores, setScores] = useState<Score[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadData();
-  }, [profile]);
-
-  async function loadData() {
+  const loadData = useCallback(async () => {
     if (!profile) return;
 
     const [accessRes, sessionsRes, scoresRes] = await Promise.all([
@@ -54,7 +50,11 @@ export default function DashboardPage() {
     setRecentSessions((sessionsRes.data as SessionWithTrack[]) || []);
     setScores(scoresRes.data || []);
     setLoading(false);
-  }
+  }, [profile]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const greeting = () => {
     const hour = new Date().getHours();
