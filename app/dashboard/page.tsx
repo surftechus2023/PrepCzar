@@ -12,7 +12,8 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
-import { getActiveTrackAccess, type ActiveTrackAccess } from '@/lib/access';
+import { authenticatedFetch } from '@/lib/api';
+import type { ActiveTrackAccess } from '@/lib/access';
 import type { ExamTrack, PracticeSession, Score } from '@/types/database';
 
 interface SessionWithTrack extends PracticeSession {
@@ -34,7 +35,7 @@ export default function DashboardPage() {
     }
 
     const [accessRes, sessionsRes, scoresRes] = await Promise.all([
-      getActiveTrackAccess(profile.id),
+      authenticatedFetch('/api/dashboard/access'),
       supabase
         .from('practice_sessions')
         .select('*, exam_track:exam_tracks(*)')
@@ -48,8 +49,9 @@ export default function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(10),
     ]);
+    const accessJson = await accessRes.json();
 
-    setTrackAccess(accessRes.data);
+    setTrackAccess(accessRes.ok ? accessJson.access || [] : []);
     setRecentSessions((sessionsRes.data as SessionWithTrack[]) || []);
     setScores(scoresRes.data || []);
     setLoading(false);

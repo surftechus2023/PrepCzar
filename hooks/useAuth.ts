@@ -60,24 +60,6 @@ export function useAuthState() {
   }, []);
 
   async function fetchProfile(userId: string) {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
-
-    if (data) {
-      setProfile(data);
-      setLoading(false);
-      return;
-    }
-
-    if (error) {
-      console.error('Could not fetch profile:', error.message);
-      setLoading(false);
-      return;
-    }
-
     try {
       const res = await authenticatedFetch('/api/auth/ensure-profile', { method: 'POST' });
       const json = await res.json();
@@ -86,8 +68,18 @@ export function useAuthState() {
         console.error('Could not create missing profile:', json.error);
       }
     } catch (err: any) {
-      console.error('Could not create missing profile:', err.message);
-      setProfile(null);
+      console.error('Could not repair profile:', err.message);
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Could not fetch profile:', error.message);
+      }
+
+      setProfile(data || null);
     }
 
     setLoading(false);

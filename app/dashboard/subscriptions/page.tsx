@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { authenticatedFetch } from '@/lib/api';
 import type { ExamCategory, ExamTrack, Subscription } from '@/types/database';
@@ -42,27 +41,35 @@ interface CategoryWithTracks extends ExamCategory {
 }
 
 export default function SubscriptionsPage() {
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const [categories, setCategories] = useState<CategoryWithTracks[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkingOut, setCheckingOut] = useState<string | null>(null);
   const { toast } = useToast();
 
   const loadData = useCallback(async () => {
+    if (authLoading) return;
     if (!profile) {
       setLoading(false);
       return;
     }
 
-    const [catsRes, tracksRes, subsRes] = await Promise.all([
-      supabase.from('exam_categories').select('*').order('display_order'),
-      supabase.from('exam_tracks').select('*').eq('active', true).order('display_order'),
-      supabase.from('subscriptions').select('*').eq('user_id', profile.id),
-    ]);
+    const res = await authenticatedFetch('/api/dashboard/subscriptions');
+    const json = await res.json();
 
-    const cats = (catsRes.data || []) as ExamCategory[];
-    const tracks = (tracksRes.data || []) as ExamTrack[];
-    const subs = (subsRes.data || []) as Subscription[];
+    if (!res.ok) {
+      toast({
+        title: 'Could not load subscriptions',
+        description: json.error || 'Please refresh the page.',
+        variant: 'destructive',
+      });
+      setLoading(false);
+      return;
+    }
+
+    const cats = (json.categories || []) as ExamCategory[];
+    const tracks = (json.tracks || []) as ExamTrack[];
+    const subs = (json.subscriptions || []) as Subscription[];
 
     const tracksByCat: Record<string, TrackWithSub[]> = {};
     tracks.forEach(track => {
@@ -75,7 +82,7 @@ export default function SubscriptionsPage() {
 
     setCategories(cats.map(c => ({ ...c, tracks: tracksByCat[c.id] || [] })));
     setLoading(false);
-  }, [profile]);
+  }, [authLoading, profile, toast]);
 
   useEffect(() => {
     loadData();
@@ -123,6 +130,9 @@ export default function SubscriptionsPage() {
   const hasStripeCustomer = categories
     .flatMap(c => c.tracks)
     .some(t => t.subscription?.stripe_customer_id);
+  const activeTracks = categories
+    .flatMap(c => c.tracks)
+    .filter(t => t.subscription?.status === 'active');
 
   if (loading) {
     return (
@@ -152,6 +162,32 @@ export default function SubscriptionsPage() {
             <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
             Billing Portal
           </Button>
+        </div>
+      )}
+
+      {activeTracks.length > 0 && (
+        <div className="mb-8 rounded-xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-800 dark:bg-emerald-950/30">
+          <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300 mb-3">
+            Your current subscription{activeTracks.length > 1 ? 's' : ''}
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {activeTracks.map((track) => (
+              <div key={track.id} className="rounded-lg border border-emerald-200 bg-white p-4 dark:border-emerald-800 dark:bg-slate-950">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="font-bold text-foreground">{track.name}</h2>
+                    <p className="text-sm text-muted-foreground">{track.full_name}</p>
+                  </div>
+                  <Badge className="bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-400">
+                    <CheckCircle className="w-3 h-3 mr-1" />Active
+                  </Badge>
+                </div>
+                <Button className="mt-4 w-full" asChild>
+                  <Link href={`/dashboard/practice/mcq?exam=${track.id}`}>Start Practicing</Link>
+                </Button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
