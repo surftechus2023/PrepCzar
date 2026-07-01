@@ -93,6 +93,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: profileError.message }, { status: 500 });
     }
 
+    const { data: syncedProfile } = await supabaseAdmin
+      .from('users')
+      .select('id, email, full_name, preferred_language, role')
+      .eq('id', userId)
+      .single();
+
+    if (syncedProfile) {
+      await supabaseAdmin
+        .from('profiles')
+        .upsert(syncedProfile, { onConflict: 'id' });
+    }
+
     const { data: track } = await supabaseAdmin
       .from('exam_tracks')
       .select('id, slug, name, full_name, monthly_price, active')

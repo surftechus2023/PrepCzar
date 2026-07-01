@@ -3,6 +3,7 @@
 import { useState, useEffect, createContext, useContext } from 'react';
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { authenticatedFetch } from '@/lib/api';
 import type { User } from '@/types/database';
 
 interface AuthContextType {
@@ -59,12 +60,36 @@ export function useAuthState() {
   }, []);
 
   async function fetchProfile(userId: string) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('users')
       .select('*')
       .eq('id', userId)
       .maybeSingle();
-    setProfile(data);
+
+    if (data) {
+      setProfile(data);
+      setLoading(false);
+      return;
+    }
+
+    if (error) {
+      console.error('Could not fetch profile:', error.message);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await authenticatedFetch('/api/auth/ensure-profile', { method: 'POST' });
+      const json = await res.json();
+      setProfile(res.ok ? json.profile : null);
+      if (!res.ok) {
+        console.error('Could not create missing profile:', json.error);
+      }
+    } catch (err: any) {
+      console.error('Could not create missing profile:', err.message);
+      setProfile(null);
+    }
+
     setLoading(false);
   }
 

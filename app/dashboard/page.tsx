@@ -28,7 +28,10 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
-    if (!profile) return;
+    if (!profile) {
+      setLoading(false);
+      return;
+    }
 
     const [accessRes, sessionsRes, scoresRes] = await Promise.all([
       getActiveTrackAccess(profile.id),
