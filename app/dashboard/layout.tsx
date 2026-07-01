@@ -9,16 +9,20 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (loading) return;
+
+    if (!user) {
       router.push('/auth/login');
+    } else if (profile?.role === 'admin') {
+      router.push('/admin');
     }
-  }, [loading, user, router]);
+  }, [loading, user, profile, router]);
 
   if (loading) {
     return (
@@ -31,7 +35,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  if (!user) return null;
+  if (!user || profile?.role === 'admin') return null;
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
