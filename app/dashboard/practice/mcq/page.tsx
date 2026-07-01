@@ -53,6 +53,7 @@ function MCQPracticeContent() {
   const [answers, setAnswers] = useState<AnswerMap>({});
   const [showRationale, setShowRationale] = useState(false);
   const [session, setSession] = useState<PracticeSession | null>(null);
+  const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [completed, setCompleted] = useState(false);
   const [lang, setLang] = useState<'en' | 'es' | 'fr'>('en');
@@ -105,6 +106,7 @@ function MCQPracticeContent() {
     }
 
     if (!targetTrackId) return;
+    setActiveTrackId(targetTrackId);
 
     const allowed = await hasActiveTrackAccess(profile.id, targetTrackId);
     if (!allowed) {
@@ -131,16 +133,7 @@ function MCQPracticeContent() {
 
     // Create new session if needed
     if (!sessionId && profile) {
-      const { data: newSession } = await supabase
-        .from('practice_sessions')
-        .insert({
-          user_id: profile.id,
-          exam_track_id: targetTrackId,
-          mode: 'mcq',
-        })
-        .select()
-        .single();
-      if (newSession) setSession(newSession);
+      await createPracticeSession(targetTrackId);
     }
 
     setLoading(false);
@@ -156,6 +149,22 @@ function MCQPracticeContent() {
   const currentAnswer = currentQuestion ? answers[currentQuestion.id] : undefined;
   const isAnswered = !!currentAnswer;
 
+  function getCorrectOption(q: Question): 'a' | 'b' | 'c' | 'd' {
+    const option = String(q.correct_option || '').toLowerCase();
+    return (['a', 'b', 'c', 'd'].includes(option) ? option : 'a') as 'a' | 'b' | 'c' | 'd';
+  }
+
+  async function createPracticeSession(trackId: string) {
+    const res = await authenticatedFetch('/api/dashboard/practice-session', {
+      method: 'POST',
+      body: JSON.stringify({ examTrackId: trackId, mode: 'mcq' }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Could not create practice session');
+    setSession(json.session);
+    return json.session as PracticeSession;
+  }
+
   function getQuestionText(q: Question) {
     return lang === 'es' ? q.question_es || q.question_en
          : lang === 'fr' ? q.question_fr || q.question_en
@@ -169,30 +178,42 @@ function MCQPracticeContent() {
   }
 
   function getRationale(q: Question) {
-    return lang === 'es' ? q.rationale_es || q.rationale_en
+    const localized = lang === 'es' ? q.rationale_es || q.rationale_en
          : lang === 'fr' ? q.rationale_fr || q.rationale_en
          : q.rationale_en;
+    return localized || q.correct_rationale_en || 'Review the correct option and compare it with the wording of the question.';
   }
 
   async function handleAnswer(option: 'a' | 'b' | 'c' | 'd') {
-    if (isAnswered || !currentQuestion || !session) return;
+    if (isAnswered || !currentQuestion) return;
 
-    const isCorrect = option === currentQuestion.correct_option;
+    const correctOption = getCorrectOption(currentQuestion);
+    const isCorrect = option === correctOption;
     const newAnswers = { ...answers, [currentQuestion.id]: option };
     setAnswers(newAnswers);
     setShowRationale(true);
 
-    await supabase.from('responses').insert({
-      session_id: session.id,
-      question_id: currentQuestion.id,
-      selected_answer: option,
-      is_correct: isCorrect,
-    });
+    try {
+      const activeSession = session || (activeTrackId ? await createPracticeSession(activeTrackId) : null);
+      if (activeSession) {
+        await authenticatedFetch('/api/dashboard/practice-session', {
+          method: 'PUT',
+          body: JSON.stringify({
+            sessionId: activeSession.id,
+            questionId: currentQuestion.id,
+            selectedAnswer: option,
+            isCorrect,
+          }),
+        });
+      }
+    } catch (err) {
+      console.error('Could not record answer:', err);
+    }
 
     if (voiceEnabled) {
       const feedback = isCorrect
         ? `Correct! ${getRationale(currentQuestion)}`
-        : `Incorrect. The correct answer is ${currentQuestion.correct_option.toUpperCase()}. ${getRationale(currentQuestion)}`;
+        : `Incorrect. The correct answer is ${correctOption.toUpperCase()}. ${getRationale(currentQuestion)}`;
       speak(feedback, VOICE_LANG_MAP[lang]);
     }
   }
@@ -211,24 +232,20 @@ function MCQPracticeContent() {
     if (!session || !profile) return;
 
     const total = Object.keys(answers).length;
-    const correct = questions.filter(q => answers[q.id] === q.correct_option).length;
+    const correct = questions.filter(q => answers[q.id] === getCorrectOption(q)).length;
     const scorePercent = total > 0 ? Math.round((correct / total) * 100) : 0;
+    const weakTopics = questions
+      .filter(q => answers[q.id] !== getCorrectOption(q) && q.topic_id)
+      .map(q => q.topic_id)
+      .filter((topicId, index, all) => all.indexOf(topicId) === index);
 
-    await supabase.from('practice_sessions').update({
-      completed: true,
-      completed_at: new Date().toISOString(),
-      score_percent: scorePercent,
-    }).eq('id', session.id);
-
-    await supabase.from('scores').insert({
-      user_id: profile.id,
-      exam_track_id: session.exam_track_id || undefined,
-      exam_id: session.exam_id || undefined,
-      score: scorePercent,
-      weak_topics: questions
-        .filter(q => answers[q.id] !== q.correct_option && q.topic_id)
-        .map(q => q.topic_id)
-        .filter((topicId, index, all) => all.indexOf(topicId) === index),
+    await authenticatedFetch('/api/dashboard/practice-session', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        sessionId: session.id,
+        scorePercent,
+        weakTopics,
+      }),
     });
 
     setCompleted(true);
@@ -292,7 +309,7 @@ function MCQPracticeContent() {
 
   if (completed) {
     const total = questions.filter(q => q.id in answers).length;
-    const correct = questions.filter(q => answers[q.id] === q.correct_option).length;
+    const correct = questions.filter(q => answers[q.id] === getCorrectOption(q)).length;
     const score = total > 0 ? Math.round((correct / total) * 100) : 0;
 
     return (
@@ -423,7 +440,7 @@ function MCQPracticeContent() {
               {options.map((opt) => {
                 const text = getOptionText(currentQuestion, opt);
                 const isSelected = currentAnswer === opt;
-                const isCorrect = currentQuestion.correct_option === opt;
+                const isCorrect = getCorrectOption(currentQuestion) === opt;
                 const showResult = isAnswered;
 
                 let variant = 'outline';
@@ -471,9 +488,18 @@ function MCQPracticeContent() {
         <Card className="border-primary/30 bg-primary/5 mb-4">
           <CardContent className="p-5">
             <div className="flex items-center gap-2 mb-3">
-              <CheckCircle className="w-4 h-4 text-primary" />
-              <span className="font-semibold text-foreground text-sm">Rationale</span>
+              {currentAnswer === getCorrectOption(currentQuestion) ? (
+                <CheckCircle className="w-4 h-4 text-emerald-600" />
+              ) : (
+                <XCircle className="w-4 h-4 text-red-600" />
+              )}
+              <span className="font-semibold text-foreground text-sm">
+                {currentAnswer === getCorrectOption(currentQuestion) ? 'Correct' : 'Incorrect'}
+              </span>
             </div>
+            <p className="text-sm font-medium text-foreground mb-2">
+              Correct answer: {getCorrectOption(currentQuestion).toUpperCase()} — {getOptionText(currentQuestion, getCorrectOption(currentQuestion))}
+            </p>
             <p className="text-sm text-foreground leading-relaxed">
               {getRationale(currentQuestion)}
             </p>
