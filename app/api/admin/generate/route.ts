@@ -15,6 +15,26 @@ function normalize(value: string | null | undefined) {
   return (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+function stringValue(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function localizedValue(item: any, base: string, locale: 'en' | 'es' | 'fr', ...fallbacks: unknown[]) {
+  return stringValue(item[`${base}_${locale}`], locale === 'en' ? item[base] : undefined, ...fallbacks);
+}
+
+function normalizeDifficulty(value: unknown) {
+  return ['easy', 'medium', 'hard'].includes(String(value)) ? String(value) : 'medium';
+}
+
+function normalizeCorrectOption(value: unknown) {
+  const option = String(value || '').toLowerCase().trim();
+  return ['a', 'b', 'c', 'd'].includes(option) ? option : 'a';
+}
+
 export async function POST(req: NextRequest) {
   let parsedBody: z.infer<typeof generateSchema> | null = null;
   let adminUserId: string | null = null;
@@ -79,7 +99,7 @@ export async function POST(req: NextRequest) {
 
       items = arr
         .filter((q: any) => {
-          const text = normalize(q.question_en);
+          const text = normalize(localizedValue(q, 'question', 'en'));
           const duplicate = !text || existingText.has(text);
           if (!duplicate) existingText.add(text);
           else duplicateCount += 1;
@@ -88,28 +108,26 @@ export async function POST(req: NextRequest) {
         .map((q: any) => ({
           exam_track_id: parsedBody!.examTrackId,
           topic_id: parsedBody!.topicId,
-          question_en: q.question_en || '',
-          question_es: q.question_es || '',
-          question_fr: q.question_fr || '',
-          option_a_en: q.option_a_en || '',
-          option_a_es: q.option_a_es || '',
-          option_a_fr: q.option_a_fr || '',
-          option_b_en: q.option_b_en || '',
-          option_b_es: q.option_b_es || '',
-          option_b_fr: q.option_b_fr || '',
-          option_c_en: q.option_c_en || '',
-          option_c_es: q.option_c_es || '',
-          option_c_fr: q.option_c_fr || '',
-          option_d_en: q.option_d_en || '',
-          option_d_es: q.option_d_es || '',
-          option_d_fr: q.option_d_fr || '',
-          correct_option: ['a', 'b', 'c', 'd'].includes(String(q.correct_option).toLowerCase())
-            ? String(q.correct_option).toLowerCase()
-            : 'a',
-          rationale_en: q.rationale_en || '',
-          rationale_es: q.rationale_es || '',
-          rationale_fr: q.rationale_fr || '',
-          difficulty: ['easy', 'medium', 'hard'].includes(q.difficulty) ? q.difficulty : 'medium',
+          question_en: localizedValue(q, 'question', 'en'),
+          question_es: localizedValue(q, 'question', 'es'),
+          question_fr: localizedValue(q, 'question', 'fr'),
+          option_a_en: localizedValue(q, 'option_a', 'en', q.options?.a, q.options?.A),
+          option_a_es: localizedValue(q, 'option_a', 'es'),
+          option_a_fr: localizedValue(q, 'option_a', 'fr'),
+          option_b_en: localizedValue(q, 'option_b', 'en', q.options?.b, q.options?.B),
+          option_b_es: localizedValue(q, 'option_b', 'es'),
+          option_b_fr: localizedValue(q, 'option_b', 'fr'),
+          option_c_en: localizedValue(q, 'option_c', 'en', q.options?.c, q.options?.C),
+          option_c_es: localizedValue(q, 'option_c', 'es'),
+          option_c_fr: localizedValue(q, 'option_c', 'fr'),
+          option_d_en: localizedValue(q, 'option_d', 'en', q.options?.d, q.options?.D),
+          option_d_es: localizedValue(q, 'option_d', 'es'),
+          option_d_fr: localizedValue(q, 'option_d', 'fr'),
+          correct_option: normalizeCorrectOption(q.correct_option),
+          rationale_en: localizedValue(q, 'rationale', 'en', q.correct_rationale),
+          rationale_es: localizedValue(q, 'rationale', 'es'),
+          rationale_fr: localizedValue(q, 'rationale', 'fr'),
+          difficulty: normalizeDifficulty(q.difficulty),
           active: false,
           reviewed: false,
         }));
@@ -131,7 +149,7 @@ export async function POST(req: NextRequest) {
 
       items = arr
         .filter((f: any) => {
-          const text = normalize(f.front_en);
+          const text = normalize(localizedValue(f, 'front', 'en', f.question, f.term));
           const duplicate = !text || existingText.has(text);
           if (!duplicate) existingText.add(text);
           else duplicateCount += 1;
@@ -140,12 +158,12 @@ export async function POST(req: NextRequest) {
         .map((f: any) => ({
           exam_track_id: parsedBody!.examTrackId,
           topic_id: parsedBody!.topicId,
-          front_en: f.front_en || '',
-          front_es: f.front_es || '',
-          front_fr: f.front_fr || '',
-          back_en: f.back_en || '',
-          back_es: f.back_es || '',
-          back_fr: f.back_fr || '',
+          front_en: localizedValue(f, 'front', 'en', f.question, f.term),
+          front_es: localizedValue(f, 'front', 'es'),
+          front_fr: localizedValue(f, 'front', 'fr'),
+          back_en: localizedValue(f, 'back', 'en', f.answer, f.explanation, f.definition),
+          back_es: localizedValue(f, 'back', 'es'),
+          back_fr: localizedValue(f, 'back', 'fr'),
           active: false,
           reviewed: false,
         }));
@@ -167,7 +185,7 @@ export async function POST(req: NextRequest) {
 
       items = arr
         .filter((v: any) => {
-          const text = normalize(v.case_en);
+          const text = normalize(localizedValue(v, 'case', 'en', v.scenario, v.vignette));
           const duplicate = !text || existingText.has(text);
           if (!duplicate) existingText.add(text);
           else duplicateCount += 1;
@@ -176,18 +194,18 @@ export async function POST(req: NextRequest) {
         .map((v: any) => ({
           exam_track_id: parsedBody!.examTrackId,
           topic_id: parsedBody!.topicId,
-          case_en: v.case_en || '',
-          case_es: v.case_es || '',
-          case_fr: v.case_fr || '',
-          prompt_en: v.prompt_en || '',
-          prompt_es: v.prompt_es || '',
-          prompt_fr: v.prompt_fr || '',
-          ideal_answer_en: v.ideal_answer_en || '',
-          ideal_answer_es: v.ideal_answer_es || '',
-          ideal_answer_fr: v.ideal_answer_fr || '',
-          coaching_feedback_en: v.coaching_feedback_en || '',
-          coaching_feedback_es: v.coaching_feedback_es || '',
-          coaching_feedback_fr: v.coaching_feedback_fr || '',
+          case_en: localizedValue(v, 'case', 'en', v.scenario, v.vignette),
+          case_es: localizedValue(v, 'case', 'es'),
+          case_fr: localizedValue(v, 'case', 'fr'),
+          prompt_en: localizedValue(v, 'prompt', 'en', v.question),
+          prompt_es: localizedValue(v, 'prompt', 'es'),
+          prompt_fr: localizedValue(v, 'prompt', 'fr'),
+          ideal_answer_en: localizedValue(v, 'ideal_answer', 'en', v.answer, v.model_answer),
+          ideal_answer_es: localizedValue(v, 'ideal_answer', 'es'),
+          ideal_answer_fr: localizedValue(v, 'ideal_answer', 'fr'),
+          coaching_feedback_en: localizedValue(v, 'coaching_feedback', 'en', v.feedback, v.explanation),
+          coaching_feedback_es: localizedValue(v, 'coaching_feedback', 'es'),
+          coaching_feedback_fr: localizedValue(v, 'coaching_feedback', 'fr'),
           active: false,
           reviewed: false,
         }));

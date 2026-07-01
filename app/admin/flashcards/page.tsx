@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { supabase } from '@/lib/supabase';
+import { authenticatedFetch } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import type { Flashcard, ExamTrack } from '@/types/database';
 
@@ -29,28 +29,55 @@ export default function AdminFlashcardsPage() {
   }, []);
 
   async function loadData() {
-    const [cardsRes, tracksRes] = await Promise.all([
-      supabase.from('flashcards').select('*, exam_track:exam_tracks(name)').order('created_at', { ascending: false }).limit(200),
-      supabase.from('exam_tracks').select('*').order('name'),
-    ]);
-    setCards((cardsRes.data as FlashcardWithMeta[]) || []);
-    setTracks(tracksRes.data || []);
+    const res = await authenticatedFetch('/api/admin/flashcards');
+    const data = await res.json();
+
+    if (!res.ok) {
+      toast({ title: 'Could not load flashcards', description: data.error, variant: 'destructive' });
+      setLoading(false);
+      return;
+    }
+
+    setCards((data.flashcards as FlashcardWithMeta[]) || []);
+    setTracks(data.tracks || []);
     setLoading(false);
   }
 
+  async function updateCard(id: string, values: Partial<Flashcard>) {
+    const res = await authenticatedFetch('/api/admin/flashcards', {
+      method: 'PATCH',
+      body: JSON.stringify({ id, values }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      toast({ title: 'Update failed', description: data.error, variant: 'destructive' });
+      return null;
+    }
+
+    return data.flashcard as FlashcardWithMeta;
+  }
+
   async function toggleActive(card: FlashcardWithMeta) {
-    await (supabase as any).from('flashcards').update({ active: !card.active }).eq('id', card.id);
-    setCards(cards.map(c => c.id === card.id ? { ...c, active: !c.active } : c));
+    const updated = await updateCard(card.id, { active: !card.active });
+    if (updated) setCards(cards.map(c => c.id === card.id ? updated : c));
   }
 
   async function toggleReviewed(card: FlashcardWithMeta) {
-    await (supabase as any).from('flashcards').update({ reviewed: !card.reviewed }).eq('id', card.id);
-    setCards(cards.map(c => c.id === card.id ? { ...c, reviewed: !c.reviewed } : c));
+    const updated = await updateCard(card.id, { reviewed: !card.reviewed });
+    if (updated) setCards(cards.map(c => c.id === card.id ? updated : c));
   }
 
   async function deleteCard(id: string) {
     if (!confirm('Delete this flashcard?')) return;
-    await supabase.from('flashcards').delete().eq('id', id);
+    const res = await authenticatedFetch(`/api/admin/flashcards?id=${id}`, { method: 'DELETE' });
+    const data = await res.json();
+
+    if (!res.ok) {
+      toast({ title: 'Delete failed', description: data.error, variant: 'destructive' });
+      return;
+    }
+
     setCards(cards.filter(c => c.id !== id));
     toast({ title: 'Deleted' });
   }

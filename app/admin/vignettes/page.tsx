@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { supabase } from '@/lib/supabase';
+import { authenticatedFetch } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import type { CaseVignette, ExamTrack } from '@/types/database';
 
@@ -27,28 +27,55 @@ export default function AdminVignettesPage() {
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
-    const [vigRes, tracksRes] = await Promise.all([
-      supabase.from('case_vignettes').select('*, exam_track:exam_tracks(name)').order('created_at', { ascending: false }).limit(200),
-      supabase.from('exam_tracks').select('*').order('name'),
-    ]);
-    setVignettes((vigRes.data as VignetteWithMeta[]) || []);
-    setTracks(tracksRes.data || []);
+    const res = await authenticatedFetch('/api/admin/vignettes');
+    const data = await res.json();
+
+    if (!res.ok) {
+      toast({ title: 'Could not load vignettes', description: data.error, variant: 'destructive' });
+      setLoading(false);
+      return;
+    }
+
+    setVignettes((data.vignettes as VignetteWithMeta[]) || []);
+    setTracks(data.tracks || []);
     setLoading(false);
   }
 
+  async function updateVignette(id: string, values: Partial<CaseVignette>) {
+    const res = await authenticatedFetch('/api/admin/vignettes', {
+      method: 'PATCH',
+      body: JSON.stringify({ id, values }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      toast({ title: 'Update failed', description: data.error, variant: 'destructive' });
+      return null;
+    }
+
+    return data.vignette as VignetteWithMeta;
+  }
+
   async function toggleActive(v: VignetteWithMeta) {
-    await (supabase as any).from('case_vignettes').update({ active: !v.active }).eq('id', v.id);
-    setVignettes(vignettes.map(item => item.id === v.id ? { ...item, active: !item.active } : item));
+    const updated = await updateVignette(v.id, { active: !v.active });
+    if (updated) setVignettes(vignettes.map(item => item.id === v.id ? updated : item));
   }
 
   async function toggleReviewed(v: VignetteWithMeta) {
-    await (supabase as any).from('case_vignettes').update({ reviewed: !v.reviewed }).eq('id', v.id);
-    setVignettes(vignettes.map(item => item.id === v.id ? { ...item, reviewed: !item.reviewed } : item));
+    const updated = await updateVignette(v.id, { reviewed: !v.reviewed });
+    if (updated) setVignettes(vignettes.map(item => item.id === v.id ? updated : item));
   }
 
   async function deleteVignette(id: string) {
     if (!confirm('Delete this vignette?')) return;
-    await supabase.from('case_vignettes').delete().eq('id', id);
+    const res = await authenticatedFetch(`/api/admin/vignettes?id=${id}`, { method: 'DELETE' });
+    const data = await res.json();
+
+    if (!res.ok) {
+      toast({ title: 'Delete failed', description: data.error, variant: 'destructive' });
+      return;
+    }
+
     setVignettes(vignettes.filter(v => v.id !== id));
     toast({ title: 'Deleted' });
   }
