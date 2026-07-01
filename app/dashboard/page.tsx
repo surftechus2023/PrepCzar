@@ -11,7 +11,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
 import { authenticatedFetch } from '@/lib/api';
 import type { ActiveTrackAccess } from '@/lib/access';
 import type { ExamTrack, PracticeSession, Score } from '@/types/database';
@@ -34,26 +33,16 @@ export default function DashboardPage() {
       return;
     }
 
-    const [accessRes, sessionsRes, scoresRes] = await Promise.all([
+    const [accessRes, progressRes] = await Promise.all([
       authenticatedFetch('/api/dashboard/access'),
-      supabase
-        .from('practice_sessions')
-        .select('*, exam_track:exam_tracks(*)')
-        .eq('user_id', profile.id)
-        .order('started_at', { ascending: false })
-        .limit(5),
-      supabase
-        .from('scores')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('created_at', { ascending: false })
-        .limit(10),
+      authenticatedFetch('/api/dashboard/progress?scoreLimit=10&sessionLimit=5'),
     ]);
     const accessJson = await accessRes.json();
+    const progressJson = await progressRes.json();
 
     setTrackAccess(accessRes.ok ? accessJson.access || [] : []);
-    setRecentSessions((sessionsRes.data as SessionWithTrack[]) || []);
-    setScores(scoresRes.data || []);
+    setRecentSessions(progressRes.ok ? (progressJson.sessions as SessionWithTrack[]) || [] : []);
+    setScores(progressRes.ok ? progressJson.scores || [] : []);
     setLoading(false);
   }, [profile]);
 

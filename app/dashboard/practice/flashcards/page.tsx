@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
 import { hasActiveTrackAccess } from '@/lib/access';
 import { authenticatedFetch } from '@/lib/api';
 import { useVoice } from '@/hooks/useVoice';
@@ -58,7 +57,10 @@ function FlashcardsContent() {
   }, [profile]);
 
   const loadData = useCallback(async () => {
-    if (!examId || !profile) return;
+    if (!examId || !profile) {
+      setLoading(false);
+      return;
+    }
 
     const allowed = await hasActiveTrackAccess(profile.id, examId);
     if (!allowed) {
@@ -82,16 +84,12 @@ function FlashcardsContent() {
       setFlashcards([...contentJson.content].sort(() => Math.random() - 0.5));
     }
 
-    const { data: newSession } = await supabase
-      .from('practice_sessions')
-      .insert({
-        user_id: profile.id,
-        exam_track_id: examId,
-        mode: 'flashcard',
-      })
-      .select()
-      .single();
-    if (newSession) setSession(newSession);
+    const sessionRes = await authenticatedFetch('/api/dashboard/practice-session', {
+      method: 'POST',
+      body: JSON.stringify({ examTrackId: examId, mode: 'flashcard' }),
+    });
+    const sessionJson = await sessionRes.json();
+    if (sessionRes.ok) setSession(sessionJson.session);
 
     setLoading(false);
   }, [examId, profile, router]);
@@ -145,20 +143,16 @@ function FlashcardsContent() {
       const total = flashcards.length;
       const scorePercent = total > 0 ? Math.round((newKnown.size / total) * 100) : 0;
       if (session && profile) {
-        await supabase.from('practice_sessions').update({
-          completed: true,
-          completed_at: new Date().toISOString(),
-          score_percent: scorePercent,
-        }).eq('id', session.id);
-
-        await supabase.from('scores').insert({
-          user_id: profile.id,
-          exam_track_id: examId,
-          score: scorePercent,
-          weak_topics: flashcards
-            .filter(card => newUnknown.has(card.id) && card.topic_id)
-            .map(card => card.topic_id)
-            .filter((topicId, index, all) => all.indexOf(topicId) === index),
+        await authenticatedFetch('/api/dashboard/practice-session', {
+          method: 'PATCH',
+          body: JSON.stringify({
+            sessionId: session.id,
+            scorePercent,
+            weakTopics: flashcards
+              .filter(card => newUnknown.has(card.id) && card.topic_id)
+              .map(card => card.topic_id)
+              .filter((topicId, index, all) => all.indexOf(topicId) === index),
+          }),
         });
       }
       setCompleted(true);

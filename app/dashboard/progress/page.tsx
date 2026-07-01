@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { authenticatedFetch } from '@/lib/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { Score, PracticeSession, ExamTrack } from '@/types/database';
 
@@ -29,23 +29,11 @@ export default function ProgressPage() {
   const loadData = useCallback(async () => {
     if (!profile) return;
 
-    const [scoresRes, sessionsRes] = await Promise.all([
-      supabase
-        .from('scores')
-        .select('*, exam_track:exam_tracks(*)')
-        .eq('user_id', profile.id)
-        .order('created_at', { ascending: false })
-        .limit(30),
-      supabase
-        .from('practice_sessions')
-        .select('*, exam_track:exam_tracks(*)')
-        .eq('user_id', profile.id)
-        .order('started_at', { ascending: false })
-        .limit(20),
-    ]);
+    const res = await authenticatedFetch('/api/dashboard/progress?scoreLimit=30&sessionLimit=20');
+    const json = await res.json();
 
-    setScores((scoresRes.data as ScoreWithTrack[]) || []);
-    setSessions((sessionsRes.data as SessionWithTrack[]) || []);
+    setScores(res.ok ? (json.scores as ScoreWithTrack[]) || [] : []);
+    setSessions(res.ok ? (json.sessions as SessionWithTrack[]) || [] : []);
     setLoading(false);
   }, [profile]);
 
