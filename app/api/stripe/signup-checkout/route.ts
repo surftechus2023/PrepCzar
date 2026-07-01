@@ -4,8 +4,9 @@ import { z } from 'zod';
 import { getSupabaseAdmin } from '@/lib/server-auth';
 
 const signupCheckoutSchema = z.object({
-  userId: z.string().uuid(),
-  email: z.string().email(),
+  email: z.string().trim().email().transform((value) => value.toLowerCase()),
+  password: z.string().min(8),
+  fullName: z.string().trim().min(2),
   examTrackSlug: z.string().min(1),
 });
 
@@ -27,12 +28,68 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid signup checkout request' }, { status: 400 });
     }
 
-    const { userId, email, examTrackSlug } = parsed.data;
+    const { email, password, fullName, examTrackSlug } = parsed.data;
     const supabaseAdmin = getSupabaseAdmin();
 
-    const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
-    if (userError || userData.user?.email?.toLowerCase() !== email.toLowerCase()) {
-      return NextResponse.json({ error: 'Invalid signup user' }, { status: 403 });
+    const { data: existingProfile } = await supabaseAdmin
+      .from('users')
+      .select('id, email')
+      .ilike('email', email)
+      .maybeSingle();
+
+    let userId = existingProfile?.id;
+
+    if (userId) {
+      const { data: authUserData, error: authUserError } = await supabaseAdmin.auth.admin.getUserById(userId);
+      if (authUserError || authUserData.user?.email?.toLowerCase() !== email) {
+        userId = undefined;
+      }
+    }
+
+    if (!userId) {
+      const { data: usersData, error: usersError } = await supabaseAdmin.auth.admin.listUsers({
+        page: 1,
+        perPage: 1000,
+      });
+
+      if (usersError) {
+        return NextResponse.json({ error: usersError.message }, { status: 500 });
+      }
+
+      userId = usersData.users.find((user) => user.email?.toLowerCase() === email)?.id;
+    }
+
+    if (!userId) {
+      const { data: createdUser, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: fullName },
+      });
+
+      if (createUserError || !createdUser.user) {
+        return NextResponse.json(
+          { error: createUserError?.message || 'Could not create signup user' },
+          { status: 500 }
+        );
+      }
+
+      userId = createdUser.user.id;
+    }
+
+    const { error: profileError } = await supabaseAdmin
+      .from('users')
+      .upsert(
+        {
+          id: userId,
+          email,
+          full_name: fullName,
+        },
+        { onConflict: 'id' }
+      );
+
+    if (profileError) {
+      return NextResponse.json({ error: profileError.message }, { status: 500 });
     }
 
     const { data: track } = await supabaseAdmin

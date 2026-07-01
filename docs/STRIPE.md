@@ -1,15 +1,15 @@
 # Stripe
 
 Authenticated checkout uses `/api/stripe/checkout` and accepts only `examTrackId`.
-Paid signup checkout uses `/api/stripe/signup-checkout` after Supabase creates the user.
+Paid signup checkout uses `/api/stripe/signup-checkout` to create or reuse the Supabase auth user server-side before opening Stripe.
 
 Security requirements:
 
-- The API derives the user from the Supabase bearer token.
+- Authenticated checkout derives the user from the Supabase bearer token.
 - The API derives price and track name from Supabase.
 - The client never sends trusted payment or subscription status.
 - The webhook verifies `STRIPE_WEBHOOK_SECRET`.
-- Signup checkout validates the Supabase user id and email server-side before creating a Stripe session.
+- Signup checkout creates or reuses the Supabase user server-side and never trusts client-provided subscription status.
 - After `checkout.session.completed`, the webhook grants access and sends a Supabase magic sign-in link to the checkout email.
 
 Webhook events to enable:

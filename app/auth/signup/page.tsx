@@ -12,14 +12,12 @@ import {
   AlertCircle,
   Loader2,
   Lock,
-  RotateCcw,
   ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { getUserProfile, resendVerification, signUp } from '@/lib/auth';
 
 interface TrackInfo {
   name: string;
@@ -115,23 +113,17 @@ function SignupContent() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [resending, setResending] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [checkoutUserId, setCheckoutUserId] = useState('');
   const [checkoutError, setCheckoutError] = useState('');
 
-  function buildRedirectUrl() {
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
-    return `${siteUrl}/auth/verified?track=${trackSlug}`;
-  }
-
-  async function startSignupCheckout(userId: string) {
+  async function startSignupCheckout() {
     const res = await fetch('/api/stripe/signup-checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        userId,
-        email,
+        email: email.trim(),
+        password,
+        fullName: fullName.trim(),
         examTrackSlug: trackSlug,
       }),
     });
@@ -177,28 +169,10 @@ function SignupContent() {
 
     setLoading(true);
 
-    const { data, error } = await signUp(email, password, fullName, buildRedirectUrl());
-
-    if (error) {
-      toast({
-        title: 'Sign up failed',
-        description: error.message,
-        variant: 'destructive',
-      });
-      setLoading(false);
-      return;
-    }
-
-    if (!data?.user) {
-      setLoading(false);
-      return;
-    }
-
     try {
-      await startSignupCheckout(data.user.id);
+      await startSignupCheckout();
     } catch (checkoutError: any) {
       setLoading(false);
-      setCheckoutUserId(data.user.id);
       setCheckoutError(checkoutError.message || 'Checkout could not be started.');
       toast({
         title: 'Checkout could not start',
@@ -208,22 +182,13 @@ function SignupContent() {
       setSubmitted(true);
       return;
     }
-
-    if (data.session) {
-      const { data: profile } = await getUserProfile(data.user.id);
-      if (profile?.role === 'admin') {
-        router.push('/admin');
-      }
-    }
   }
 
   async function handleRetryCheckout() {
-    if (!checkoutUserId) return;
-
     setLoading(true);
     setCheckoutError('');
     try {
-      await startSignupCheckout(checkoutUserId);
+      await startSignupCheckout();
     } catch (err: any) {
       setLoading(false);
       setCheckoutError(err.message || 'Checkout could not be started.');
@@ -232,17 +197,6 @@ function SignupContent() {
         description: err.message,
         variant: 'destructive',
       });
-    }
-  }
-
-  async function handleResend() {
-    setResending(true);
-    const { error } = await resendVerification(email, buildRedirectUrl());
-    setResending(false);
-    if (error) {
-      toast({ title: 'Could not resend', description: error.message, variant: 'destructive' });
-    } else {
-      toast({ title: 'Email resent', description: 'Check your inbox for the new verification link.' });
     }
   }
 
@@ -255,7 +209,7 @@ function SignupContent() {
           </div>
 
           <h1 className="text-2xl font-bold text-slate-950 mb-2">Checkout did not open</h1>
-          <p className="text-slate-600 mb-1">Your account was created for</p>
+          <p className="text-slate-600 mb-1">Your account details were accepted for</p>
           <p className="text-blue-600 font-medium mb-6">{email}</p>
 
           {checkoutError && (
@@ -280,22 +234,13 @@ function SignupContent() {
             </div>
           </div>
 
-          <Button className="w-full mb-3" onClick={handleRetryCheckout} disabled={loading || !checkoutUserId}>
+          <Button className="w-full mb-4" onClick={handleRetryCheckout} disabled={loading}>
             {loading ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
               <Lock className="w-4 h-4 mr-2" />
             )}
             Retry Stripe Checkout
-          </Button>
-
-          <Button variant="outline" className="w-full mb-4" onClick={handleResend} disabled={resending}>
-            {resending ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-            ) : (
-              <RotateCcw className="w-4 h-4 mr-2" />
-            )}
-            Resend account verification email
           </Button>
 
           <p className="text-sm text-slate-500">
@@ -485,7 +430,7 @@ function SignupContent() {
 
             <p className="text-xs text-slate-500 text-center flex items-center justify-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5" />
-              Secure Stripe checkout opens after account creation.
+              Secure Stripe checkout opens after account setup.
             </p>
 
             <p className="text-xs text-slate-500 text-center">
