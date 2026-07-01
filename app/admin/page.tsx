@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react';
 import { BookOpen, Users, HelpCircle, Layers, MessageSquare, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { authenticatedFetch } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
 
 export default function AdminOverviewPage() {
   const [stats, setStats] = useState({
@@ -18,28 +19,29 @@ export default function AdminOverviewPage() {
     pendingReview: 0,
   });
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     loadStats();
   }, []);
 
   async function loadStats() {
-    const [questionsRes, flashRes, vigRes, usersRes, subsRes, pendingRes] = await Promise.all([
-      supabase.from('questions').select('id', { count: 'exact', head: true }),
-      supabase.from('flashcards').select('id', { count: 'exact', head: true }),
-      supabase.from('case_vignettes').select('id', { count: 'exact', head: true }),
-      supabase.from('users').select('id', { count: 'exact', head: true }),
-      supabase.from('subscriptions').select('id', { count: 'exact', head: true }).eq('status', 'active'),
-      supabase.from('questions').select('id', { count: 'exact', head: true }).eq('reviewed', false),
-    ]);
+    const response = await authenticatedFetch('/api/admin/stats');
+    const data = await response.json();
+
+    if (!response.ok) {
+      toast({ title: 'Could not load admin stats', description: data.error, variant: 'destructive' });
+      setLoading(false);
+      return;
+    }
 
     setStats({
-      questions: questionsRes.count || 0,
-      flashcards: flashRes.count || 0,
-      vignettes: vigRes.count || 0,
-      users: usersRes.count || 0,
-      subscriptions: subsRes.count || 0,
-      pendingReview: pendingRes.count || 0,
+      questions: data.questions || 0,
+      flashcards: data.flashcards || 0,
+      vignettes: data.vignettes || 0,
+      users: data.users || 0,
+      subscriptions: data.subscriptions || 0,
+      pendingReview: data.pendingReview || 0,
     });
     setLoading(false);
   }

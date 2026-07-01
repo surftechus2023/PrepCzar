@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { supabase } from '@/lib/supabase';
+import { authenticatedFetch } from '@/lib/api';
 import type { Question, ExamTrack, Topic } from '@/types/database';
 import {
   Dialog,
@@ -38,35 +38,51 @@ export default function AdminQuestionsPage() {
   }, []);
 
   async function loadData() {
-    const [qRes, tracksRes] = await Promise.all([
-      supabase
-        .from('questions')
-        .select('*, exam_track:exam_tracks(name, slug), topic:topics(title)')
-        .order('created_at', { ascending: false })
-        .limit(200),
-      supabase.from('exam_tracks').select('*').order('name'),
-    ]);
+    const res = await authenticatedFetch('/api/admin/questions');
+    const data = await res.json();
 
-    setQuestions((qRes.data as QuestionWithMeta[]) || []);
-    setTracks(tracksRes.data || []);
+    if (!res.ok) {
+      toast({ title: 'Could not load questions', description: data.error, variant: 'destructive' });
+      setLoading(false);
+      return;
+    }
+
+    setQuestions((data.questions as QuestionWithMeta[]) || []);
+    setTracks(data.tracks || []);
     setLoading(false);
   }
 
+  async function updateQuestion(id: string, values: Partial<Question>) {
+    const res = await authenticatedFetch('/api/admin/questions', {
+      method: 'PATCH',
+      body: JSON.stringify({ id, values }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      toast({ title: 'Update failed', description: data.error, variant: 'destructive' });
+      return null;
+    }
+
+    return data.question as QuestionWithMeta;
+  }
+
   async function toggleActive(q: QuestionWithMeta) {
-    await (supabase as any).from('questions').update({ active: !q.active }).eq('id', q.id);
-    setQuestions(questions.map(item => item.id === q.id ? { ...item, active: !item.active } : item));
+    const updated = await updateQuestion(q.id, { active: !q.active });
+    if (updated) setQuestions(questions.map(item => item.id === q.id ? updated : item));
   }
 
   async function toggleReviewed(q: QuestionWithMeta) {
-    await (supabase as any).from('questions').update({ reviewed: !q.reviewed }).eq('id', q.id);
-    setQuestions(questions.map(item => item.id === q.id ? { ...item, reviewed: !item.reviewed } : item));
+    const updated = await updateQuestion(q.id, { reviewed: !q.reviewed });
+    if (updated) setQuestions(questions.map(item => item.id === q.id ? updated : item));
   }
 
   async function deleteQuestion(id: string) {
     if (!confirm('Delete this question?')) return;
-    const { error } = await supabase.from('questions').delete().eq('id', id);
-    if (error) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    const res = await authenticatedFetch(`/api/admin/questions?id=${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) {
+      toast({ title: 'Error', description: data.error, variant: 'destructive' });
     } else {
       setQuestions(questions.filter(q => q.id !== id));
       toast({ title: 'Deleted', description: 'Question deleted.' });

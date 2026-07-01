@@ -1,0 +1,123 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
+
+export const dynamic = 'force-dynamic';
+
+function isMissingColumn(errorMessage: string | undefined) {
+  const message = (errorMessage || '').toLowerCase();
+  return message.includes('column') || message.includes('schema cache');
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const adminUser = await requireAdmin(req);
+    if (!adminUser) {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const pendingAi = searchParams.get('pendingAi') === 'true';
+    const supabaseAdmin = getSupabaseAdmin();
+
+    let questionsQuery = supabaseAdmin
+      .from('questions')
+      .select('*, exam_track:exam_tracks(name, slug), topic:topics(title)')
+      .order('created_at', { ascending: false })
+      .limit(pendingAi ? 100 : 200);
+
+    if (pendingAi) {
+      questionsQuery = questionsQuery.eq('generated_by_ai', true).eq('reviewed', false);
+    }
+
+    let { data: questions, error: questionsError } = await questionsQuery;
+
+    if (pendingAi && questionsError && isMissingColumn(questionsError.message)) {
+      const fallback = await supabaseAdmin
+        .from('questions')
+        .select('*, exam_track:exam_tracks(name, slug), topic:topics(title)')
+        .eq('reviewed', false)
+        .order('created_at', { ascending: false })
+        .limit(100);
+
+      questions = fallback.data;
+      questionsError = fallback.error;
+    }
+
+    if (questionsError) {
+      return NextResponse.json({ error: questionsError.message }, { status: 500 });
+    }
+
+    const { data: tracks, error: tracksError } = await supabaseAdmin
+      .from('exam_tracks')
+      .select('*')
+      .order('name');
+
+    if (tracksError) {
+      return NextResponse.json({ error: tracksError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      questions: questions || [],
+      tracks: tracks || [],
+    });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const adminUser = await requireAdmin(req);
+    if (!adminUser) {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
+    const { id, values } = await req.json();
+    if (!id || !values || typeof values !== 'object') {
+      return NextResponse.json({ error: 'Invalid update request' }, { status: 400 });
+    }
+
+    const { data, error } = await getSupabaseAdmin()
+      .from('questions')
+      .update(values)
+      .eq('id', id)
+      .select('*, exam_track:exam_tracks(name, slug), topic:topics(title)')
+      .single();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ question: data });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const adminUser = await requireAdmin(req);
+    if (!adminUser) {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+    if (!id) {
+      return NextResponse.json({ error: 'Missing question id' }, { status: 400 });
+    }
+
+    const { error } = await getSupabaseAdmin()
+      .from('questions')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}

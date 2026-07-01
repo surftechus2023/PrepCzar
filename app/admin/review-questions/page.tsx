@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { supabase } from '@/lib/supabase';
+import { authenticatedFetch } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import type { ExamTrack, Question, Topic } from '@/types/database';
 
@@ -44,18 +44,13 @@ export default function ReviewQuestionsPage() {
 
   const loadQuestions = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('questions')
-      .select('*, exam_track:exam_tracks(name, slug), topic:topics(title)')
-      .eq('generated_by_ai', true)
-      .eq('reviewed', false)
-      .order('created_at', { ascending: false })
-      .limit(100);
+    const response = await authenticatedFetch('/api/admin/questions?pendingAi=true');
+    const data = await response.json();
 
-    if (error) {
-      toast({ title: 'Could not load questions', description: error.message, variant: 'destructive' });
+    if (!response.ok) {
+      toast({ title: 'Could not load questions', description: data.error, variant: 'destructive' });
     } else {
-      setQuestions((data as ReviewQuestion[]) || []);
+      setQuestions((data.questions as ReviewQuestion[]) || []);
     }
     setLoading(false);
   }, [toast]);
@@ -65,13 +60,18 @@ export default function ReviewQuestionsPage() {
   }, [loadQuestions]);
 
   async function updateQuestion(id: string, values: Partial<Question>) {
-    const { error } = await (supabase as any).from('questions').update(values).eq('id', id);
-    if (error) {
-      toast({ title: 'Update failed', description: error.message, variant: 'destructive' });
+    const response = await authenticatedFetch('/api/admin/questions', {
+      method: 'PATCH',
+      body: JSON.stringify({ id, values }),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      toast({ title: 'Update failed', description: data.error, variant: 'destructive' });
       return false;
     }
 
-    setQuestions((current) => current.map((question) => question.id === id ? { ...question, ...values } : question));
+    setQuestions((current) => current.map((question) => question.id === id ? data.question : question));
     return true;
   }
 
