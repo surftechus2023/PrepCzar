@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { z } from 'zod';
 import { getSupabaseAdmin } from '@/lib/server-auth';
+import { getSiteUrl } from '@/lib/site-url';
 
 const signupCheckoutSchema = z.object({
   email: z.string().trim().email().transform((value) => value.toLowerCase()),
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid exam track' }, { status: 400 });
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const siteUrl = getSiteUrl();
     const trackName = track.full_name || track.name;
 
     const session = await stripe.checkout.sessions.create({
@@ -123,7 +124,7 @@ export async function POST(req: NextRequest) {
           quantity: 1,
         },
       ],
-      success_url: `${siteUrl}/auth/payment-confirmed?track=${track.slug}`,
+      success_url: `${siteUrl}/auth/payment-confirmed?track=${track.slug}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}/auth/signup?track=${track.slug}&canceled=true`,
       metadata: {
         userId,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { getAuthenticatedUser, getSupabaseAdmin } from '@/lib/server-auth';
+import { getSiteUrl } from '@/lib/site-url';
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-05-27.dahlia' as any })
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No billing account found' }, { status: 404 });
     }
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const siteUrl = getSiteUrl();
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: subscription.stripe_customer_id,
       return_url: `${siteUrl}/dashboard/subscriptions`,
