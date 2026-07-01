@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
     if (parsedBody.type === 'mcq') {
       const generated = await generateMCQs(trackName, topicTitle, Math.min(parsedBody.count, 25));
       const arr = Array.isArray(generated) ? generated : Object.values(generated);
+      if (arr.length === 0) throw new Error('OpenAI returned zero MCQ questions.');
       const { data: existing } = await supabaseAdmin
         .from('questions')
         .select('question_en')
@@ -120,6 +121,7 @@ export async function POST(req: NextRequest) {
     } else if (parsedBody.type === 'flashcards') {
       const generated = await generateFlashcards(trackName, topicTitle, Math.min(parsedBody.count, 20));
       const arr = Array.isArray(generated) ? generated : Object.values(generated);
+      if (arr.length === 0) throw new Error('OpenAI returned zero flashcards.');
       const { data: existing } = await supabaseAdmin
         .from('flashcards')
         .select('front_en')
@@ -155,6 +157,7 @@ export async function POST(req: NextRequest) {
     } else {
       const generated = await generateVignettes(trackName, topicTitle, Math.min(parsedBody.count, 10));
       const arr = Array.isArray(generated) ? generated : Object.values(generated);
+      if (arr.length === 0) throw new Error('OpenAI returned zero case vignettes.');
       const { data: existing } = await supabaseAdmin
         .from('case_vignettes')
         .select('case_en')

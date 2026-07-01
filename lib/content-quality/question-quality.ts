@@ -100,6 +100,21 @@ export async function loadExistingQuestionFingerprints(
     .eq('exam_track_id', examTrackId)
     .eq('topic_id', topicId);
 
+  if (error && error.message.toLowerCase().includes('duplicate_hash')) {
+    const fallback = await supabaseAdmin
+      .from('questions')
+      .select('question_en')
+      .eq('exam_track_id', examTrackId)
+      .eq('topic_id', topicId);
+
+    if (fallback.error) throw new Error(fallback.error.message);
+
+    return (fallback.data || []).map((question: { question_en: string | null }) => ({
+      question_en: question.question_en,
+      duplicate_hash: null,
+    }));
+  }
+
   if (error) throw new Error(error.message);
   return (data || []) as Array<{ question_en: string | null; duplicate_hash: string | null }>;
 }

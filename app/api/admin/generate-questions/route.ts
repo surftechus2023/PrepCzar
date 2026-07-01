@@ -40,8 +40,14 @@ function nextBatchSize(remaining: number) {
   return 25;
 }
 
+function isMissingSchemaObject(errorMessage: string | undefined) {
+  const message = (errorMessage || '').toLowerCase();
+  return message.includes('schema cache') || message.includes('could not find') || message.includes('column');
+}
+
 export async function POST(req: NextRequest) {
   let batchId: string | null = null;
+  let supportsQualityMetadata = true;
   const supabaseAdmin = getSupabaseAdmin();
 
   try {
@@ -96,10 +102,14 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (batchError || !batch) {
-      throw new Error(batchError?.message || 'Could not create generation batch.');
-    }
+      if (!isMissingSchemaObject(batchError?.message)) {
+        throw new Error(batchError?.message || 'Could not create generation batch.');
+      }
 
-    batchId = batch.id;
+      supportsQualityMetadata = false;
+    } else {
+      batchId = batch.id;
+    }
 
     const existingQuestions = await loadExistingQuestionFingerprints(
       supabaseAdmin,
@@ -168,7 +178,7 @@ export async function POST(req: NextRequest) {
           duplicate_hash: quality.duplicateHash,
         });
 
-        return [{
+        const row = {
           exam_track_id: body.examTrackId,
           topic_id: body.topicId,
           question_en: question.question,
@@ -178,13 +188,21 @@ export async function POST(req: NextRequest) {
           option_d_en: question.option_d,
           correct_option: question.correct_option.toLowerCase(),
           rationale_en: question.correct_rationale,
+          difficulty: question.difficulty,
+          reviewed: false,
+          active: false,
+        };
+
+        if (!supportsQualityMetadata) return [row];
+
+        return [{
+          ...row,
           correct_rationale_en: question.correct_rationale,
           option_a_rationale_en: question.option_a_rationale,
           option_b_rationale_en: question.option_b_rationale,
           option_c_rationale_en: question.option_c_rationale,
           option_d_rationale_en: question.option_d_rationale,
           test_taking_tip_en: question.test_taking_tip,
-          difficulty: question.difficulty,
           cognitive_level: question.cognitive_level,
           subtopic: question.subtopic || body.subtopic,
           learning_objective: question.learning_objective || body.learningObjective,
@@ -194,8 +212,6 @@ export async function POST(req: NextRequest) {
           review_notes: quality.reviewNotes.join('\n'),
           generation_batch_id: batchId,
           generated_by_ai: true,
-          reviewed: false,
-          active: false,
         }];
       });
 
@@ -210,26 +226,41 @@ export async function POST(req: NextRequest) {
         insertedIds.push(...((inserted || []) as Array<{ id: string }>).map((row) => row.id));
       }
 
+      if (batchId) {
+        await supabaseAdmin
+          .from('ai_generation_batches')
+          .update({
+            quantity_generated: quantityGenerated,
+            quantity_inserted: quantityInserted,
+            quantity_rejected: quantityRejected,
+          })
+          .eq('id', batchId);
+      }
+    }
+
+    if (batchId) {
       await supabaseAdmin
         .from('ai_generation_batches')
         .update({
           quantity_generated: quantityGenerated,
           quantity_inserted: quantityInserted,
           quantity_rejected: quantityRejected,
+          status: 'completed',
+          completed_at: new Date().toISOString(),
         })
         .eq('id', batchId);
+    } else {
+      await supabaseAdmin.from('generation_logs').insert({
+        admin_user_id: adminUser.id,
+        exam_track_id: body.examTrackId,
+        topic_id: body.topicId,
+        content_type: 'mcq',
+        requested_count: body.quantity,
+        generated_count: quantityInserted,
+        duplicate_count: quantityRejected,
+        status: 'success',
+      });
     }
-
-    await supabaseAdmin
-      .from('ai_generation_batches')
-      .update({
-        quantity_generated: quantityGenerated,
-        quantity_inserted: quantityInserted,
-        quantity_rejected: quantityRejected,
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-      })
-      .eq('id', batchId);
 
     return NextResponse.json({
       batchId,

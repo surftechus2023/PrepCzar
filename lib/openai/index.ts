@@ -1,6 +1,21 @@
 export { getOpenAIClient } from './client';
 import { getOpenAIClient } from './client';
 
+function parseGeneratedArray(content: string, keys: string[]) {
+  const parsed = JSON.parse(content);
+  if (Array.isArray(parsed)) return parsed;
+
+  for (const key of keys) {
+    if (Array.isArray(parsed[key])) return parsed[key];
+  }
+
+  for (const value of Object.values(parsed)) {
+    if (Array.isArray(value)) return value;
+  }
+
+  return [];
+}
+
 export async function generateMCQs(examName: string, topicTitle: string, count: number = 10) {
   const openai = getOpenAIClient();
   const prompt = `Generate ${count} multiple choice questions for the ${examName} exam on the topic "${topicTitle}".
@@ -40,8 +55,7 @@ Ensure questions are original, clinically accurate, appropriately difficult, and
   const content = completion.choices[0].message.content;
   if (!content) throw new Error('No content returned from OpenAI');
 
-  const parsed = JSON.parse(content);
-  return parsed.questions || parsed;
+  return parseGeneratedArray(content, ['questions', 'mcqs', 'items']);
 }
 
 export async function generateFlashcards(examName: string, topicTitle: string, count: number = 10) {
@@ -69,8 +83,7 @@ Make flashcards concise, memorable, original, and exam-relevant. Do not copy pro
   const content = completion.choices[0].message.content;
   if (!content) throw new Error('No content returned from OpenAI');
 
-  const parsed = JSON.parse(content);
-  return parsed.flashcards || parsed;
+  return parseGeneratedArray(content, ['flashcards', 'cards', 'items']);
 }
 
 export async function generateVignettes(examName: string, topicTitle: string, count: number = 5) {
@@ -104,8 +117,7 @@ Cases should be original, realistic, complex, and test critical thinking. Do not
   const content = completion.choices[0].message.content;
   if (!content) throw new Error('No content returned from OpenAI');
 
-  const parsed = JSON.parse(content);
-  return parsed.vignettes || parsed;
+  return parseGeneratedArray(content, ['vignettes', 'case_vignettes', 'cases', 'items']);
 }
 
 export * from './question-generator';
