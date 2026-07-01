@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { signIn, getUserProfile, resendVerification } from '@/lib/auth';
+import { authenticatedFetch } from '@/lib/api';
+import { signIn, resendVerification } from '@/lib/auth';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -41,10 +42,15 @@ export default function LoginPage() {
     }
 
     if (data?.user) {
-      const { data: profile } = await getUserProfile(data.user.id);
-      if (profile?.role === 'admin') {
-        router.push('/admin');
-        return;
+      try {
+        const profileRes = await authenticatedFetch('/api/auth/ensure-profile', { method: 'POST' });
+        const profileJson = await profileRes.json();
+        if (profileRes.ok && profileJson.profile?.role === 'admin') {
+          router.push('/admin');
+          return;
+        }
+      } catch (err: any) {
+        console.error('Could not verify profile after sign in:', err.message);
       }
     }
 
