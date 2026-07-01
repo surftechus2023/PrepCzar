@@ -20,8 +20,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { getUserProfile, resendVerification, signUp } from '@/lib/auth';
-import { authenticatedFetch } from '@/lib/api';
-import { supabase } from '@/lib/supabase';
 
 interface TrackInfo {
   name: string;
@@ -125,21 +123,14 @@ function SignupContent() {
     return `${siteUrl}/auth/verified?track=${trackSlug}`;
   }
 
-  async function startCheckout() {
-    const { data: track } = await supabase
-      .from('exam_tracks')
-      .select('id')
-      .eq('slug', trackSlug)
-      .single();
-
-    if (!track?.id) {
-      throw new Error('Selected exam track is unavailable.');
-    }
-
-    const res = await authenticatedFetch('/api/stripe/checkout', {
+  async function startSignupCheckout(userId: string) {
+    const res = await fetch('/api/stripe/signup-checkout', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        examTrackId: track.id,
+        userId,
+        email,
+        examTrackSlug: trackSlug,
       }),
     });
 
@@ -201,27 +192,24 @@ function SignupContent() {
       return;
     }
 
-    if (!data.session) {
-      setLoading(false);
-      setSubmitted(true);
-      return;
-    }
-
-    const { data: profile } = await getUserProfile(data.user.id);
-    if (profile?.role === 'admin') {
-      router.push('/admin');
-      return;
-    }
-
     try {
-      await startCheckout();
+      await startSignupCheckout(data.user.id);
     } catch (checkoutError: any) {
+      setLoading(false);
       toast({
         title: 'Checkout could not start',
         description: checkoutError.message,
         variant: 'destructive',
       });
-      router.push('/dashboard/subscriptions');
+      setSubmitted(true);
+      return;
+    }
+
+    if (data.session) {
+      const { data: profile } = await getUserProfile(data.user.id);
+      if (profile?.role === 'admin') {
+        router.push('/admin');
+      }
     }
   }
 
@@ -251,11 +239,11 @@ function SignupContent() {
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 mb-6 text-left space-y-3">
             <div className="flex items-start gap-3">
               <CheckCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-              <p className="text-slate-700 text-sm">Verify your email to activate your account</p>
+              <p className="text-slate-700 text-sm">Your account was created, but checkout did not open</p>
             </div>
             <div className="flex items-start gap-3">
               <CheckCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-              <p className="text-slate-700 text-sm">Then continue to Stripe checkout for {trackInfo.name}</p>
+              <p className="text-slate-700 text-sm">Use the verification email or sign in later to continue with {trackInfo.name}</p>
             </div>
             <div className="flex items-start gap-3">
               <CheckCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />

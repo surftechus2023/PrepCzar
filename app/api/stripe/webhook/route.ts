@@ -20,6 +20,28 @@ function mapStripeStatus(status: string) {
   return 'inactive';
 }
 
+async function sendPostPaymentSignInLink(email: string | null | undefined) {
+  if (!email) return;
+
+  try {
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+    const supabaseAdmin = getSupabaseAdmin();
+    const { error } = await (supabaseAdmin.auth as any).signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: false,
+        emailRedirectTo: `${siteUrl}/auth/verified`,
+      },
+    });
+
+    if (error) {
+      console.error('Could not send post-payment sign-in link:', error.message);
+    }
+  } catch (err: any) {
+    console.error('Could not send post-payment sign-in link:', err.message);
+  }
+}
+
 export async function POST(req: NextRequest) {
   if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) {
     return NextResponse.json({ error: 'Stripe webhook is not configured' }, { status: 503 });
@@ -75,6 +97,10 @@ export async function POST(req: NextRequest) {
           active: status === 'active',
           revoked_at: status === 'active' ? null : new Date().toISOString(),
         }, { onConflict: 'user_id,exam_track_id' });
+
+        if (status === 'active') {
+          await sendPostPaymentSignInLink(session.customer_details?.email || session.customer_email);
+        }
       }
       break;
     }
