@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, BookOpen, Layers, MessageSquare, BarChart3,
-  CreditCard, User, Settings, LogOut, ChevronLeft
+  CreditCard, User, Settings, LogOut, ChevronLeft, Mic
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/dashboard' },
   { icon: BookOpen, label: 'MCQ Practice', href: '/dashboard/practice/mcq' },
+  { icon: Mic, label: 'Voice Practice', href: '/dashboard/practice/voice' },
   { icon: Layers, label: 'Flashcards', href: '/dashboard/practice/flashcards' },
   { icon: MessageSquare, label: 'Case Vignettes', href: '/dashboard/practice/vignettes' },
   { icon: BarChart3, label: 'Progress', href: '/dashboard/progress' },

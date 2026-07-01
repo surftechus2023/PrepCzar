@@ -4,7 +4,7 @@ import { useCallback, useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   CreditCard, CheckCircle, Brain, Heart, MessageSquare, ClipboardList,
-  Stethoscope, Loader2, ExternalLink, AlertCircle, ChevronRight
+  Stethoscope, Loader2, ExternalLink, AlertCircle, ChevronRight, Mic
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -182,9 +182,17 @@ export default function SubscriptionsPage() {
                     <CheckCircle className="w-3 h-3 mr-1" />Active
                   </Badge>
                 </div>
-                <Button className="mt-4 w-full" asChild>
-                  <Link href={`/dashboard/practice/mcq?exam=${track.id}`}>Start Practicing</Link>
-                </Button>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  <Button className="w-full" asChild>
+                    <Link href={`/dashboard/practice/mcq?exam=${track.id}`}>Start Practicing</Link>
+                  </Button>
+                  <Button variant="outline" className="w-full" asChild>
+                    <Link href={`/dashboard/practice/mcq?exam=${track.id}&voice=1`}>
+                      <Mic className="w-4 h-4 mr-1.5" />
+                      Voice Practice
+                    </Link>
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
@@ -256,6 +264,12 @@ export default function SubscriptionsPage() {
                             <Button className="w-full" asChild>
                               <Link href={`/dashboard/practice/mcq?exam=${track.id}`}>
                                 Start Practicing
+                              </Link>
+                            </Button>
+                            <Button variant="outline" className="w-full" asChild>
+                              <Link href={`/dashboard/practice/mcq?exam=${track.id}&voice=1`}>
+                                <Mic className="w-4 h-4 mr-1.5" />
+                                Voice Practice
                               </Link>
                             </Button>
                             <p className="text-xs text-center text-muted-foreground">

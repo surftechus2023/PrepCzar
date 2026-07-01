@@ -4,7 +4,7 @@ import { useCallback, useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   BookOpen, Layers, MessageSquare, BarChart3, Clock, TrendingUp,
-  ArrowRight, Plus, Trophy, Target, Zap
+  ArrowRight, Plus, Trophy, Target, Zap, Mic
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -186,6 +186,12 @@ export default function DashboardPage() {
                         <Link href={`/dashboard/practice/mcq?exam=${access.exam_track_id}`}>
                           <BookOpen className="w-3.5 h-3.5 mr-1.5" />
                           Practice MCQ
+                        </Link>
+                      </Button>
+                      <Button size="sm" variant="outline" asChild>
+                        <Link href={`/dashboard/practice/mcq?exam=${access.exam_track_id}&voice=1`}>
+                          <Mic className="w-3.5 h-3.5 mr-1.5" />
+                          Voice Practice
                         </Link>
                       </Button>
                       <Button size="sm" variant="outline" asChild>

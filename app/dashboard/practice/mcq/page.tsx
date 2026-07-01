@@ -42,6 +42,7 @@ function MCQPracticeContent() {
   const searchParams = useSearchParams();
   const examId = searchParams.get('exam');
   const sessionId = searchParams.get('session');
+  const voiceMode = searchParams.get('voice') === '1';
   const router = useRouter();
   const { profile } = useAuth();
 
@@ -56,6 +57,12 @@ function MCQPracticeContent() {
   const [lang, setLang] = useState<'en' | 'es' | 'fr'>('en');
 
   const { voiceEnabled, setVoiceEnabled, speaking, listening, supported, speak, stopSpeaking, startListening, stopListening } = useVoice();
+
+  useEffect(() => {
+    if (voiceMode) {
+      setVoiceEnabled(true);
+    }
+  }, [setVoiceEnabled, voiceMode]);
 
   useEffect(() => {
     if (profile?.preferred_language) {
@@ -357,7 +364,9 @@ function MCQPracticeContent() {
           </Button>
           <div>
             <h1 className="font-semibold text-foreground text-sm">{exam?.name}</h1>
-            <p className="text-xs text-muted-foreground">MCQ Practice</p>
+            <p className="text-xs text-muted-foreground">
+              {voiceEnabled ? 'Voice Practice Mode' : 'MCQ Practice'}
+            </p>
           </div>
         </div>
 
