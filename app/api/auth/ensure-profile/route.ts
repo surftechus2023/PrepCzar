@@ -47,6 +47,40 @@ export async function POST(req: NextRequest) {
       .from('profiles')
       .upsert(existingProfile || profilePayload, { onConflict: 'id' });
 
+    const { data: activeSubscriptions, error: subscriptionsError } = await supabaseAdmin
+      .from('subscriptions')
+      .select('id, exam_track_id, status, expires_at')
+      .eq('user_id', authUser.id)
+      .eq('status', 'active');
+
+    if (subscriptionsError) {
+      return NextResponse.json({ error: subscriptionsError.message }, { status: 500 });
+    }
+
+    const accessRows = (activeSubscriptions || [])
+      .filter((subscription) => {
+        if (!subscription.exam_track_id) return false;
+        if (!subscription.expires_at) return true;
+        return new Date(subscription.expires_at).getTime() > Date.now();
+      })
+      .map((subscription) => ({
+        user_id: authUser.id,
+        exam_track_id: subscription.exam_track_id,
+        subscription_id: subscription.id,
+        active: true,
+        revoked_at: null,
+      }));
+
+    if (accessRows.length > 0) {
+      const { error: accessError } = await supabaseAdmin
+        .from('user_exam_access')
+        .upsert(accessRows, { onConflict: 'user_id,exam_track_id' });
+
+      if (accessError) {
+        return NextResponse.json({ error: accessError.message }, { status: 500 });
+      }
+    }
+
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('users')
       .select('*')

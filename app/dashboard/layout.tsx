@@ -1,23 +1,18 @@
 'use client';
 
-import { useCallback, useState, useEffect } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Loader2, Menu } from 'lucide-react';
 import { DashboardSidebar } from '@/components/dashboard/DashboardSidebar';
 import { useAuth } from '@/hooks/useAuth';
-import { getActiveTrackAccess } from '@/lib/access';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-
-const UNGUARDED_PATHS = ['/dashboard/subscriptions', '/dashboard/profile'];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [subChecked, setSubChecked] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -25,27 +20,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [loading, user, router]);
 
-  const checkSubscription = useCallback(async () => {
-    if (!user) return;
-    const { data } = await getActiveTrackAccess(user.id);
-
-    if (data.length === 0) {
-      router.push('/dashboard/subscriptions');
-      return;
-    }
-    setSubChecked(true);
-  }, [router, user]);
-
-  useEffect(() => {
-    if (!user || loading) return;
-    if (UNGUARDED_PATHS.some((p) => pathname.startsWith(p))) {
-      setSubChecked(true);
-      return;
-    }
-    checkSubscription();
-  }, [checkSubscription, user, loading, pathname]);
-
-  if (loading || (!subChecked && !UNGUARDED_PATHS.some((p) => pathname.startsWith(p)))) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">

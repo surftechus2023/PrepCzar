@@ -49,7 +49,10 @@ export default function SubscriptionsPage() {
   const { toast } = useToast();
 
   const loadData = useCallback(async () => {
-    if (!profile) return;
+    if (!profile) {
+      setLoading(false);
+      return;
+    }
 
     const [catsRes, tracksRes, subsRes] = await Promise.all([
       supabase.from('exam_categories').select('*').order('display_order'),
@@ -75,8 +78,8 @@ export default function SubscriptionsPage() {
   }, [profile]);
 
   useEffect(() => {
-    if (profile) loadData();
-  }, [loadData, profile]);
+    loadData();
+  }, [loadData]);
 
   async function handleSubscribe(track: TrackWithSub) {
     setCheckingOut(track.id);
