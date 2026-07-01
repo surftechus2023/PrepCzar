@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { hasActiveTrackAccess } from '@/lib/access';
+import { authenticatedFetch } from '@/lib/api';
 import { useVoice } from '@/hooks/useVoice';
 import type { Flashcard, Exam, PracticeSession } from '@/types/database';
 
@@ -65,19 +66,20 @@ function FlashcardsContent() {
       return;
     }
 
-    const [trackRes, cardsRes] = await Promise.all([
-      supabase.from('exam_tracks').select('id, name').eq('id', examId).maybeSingle(),
-      supabase.from('flashcards').select('*').eq('exam_track_id', examId).eq('active', true).eq('reviewed', true).limit(50),
-    ]);
+    const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=flashcards&exam=${examId}`);
+    const contentJson = await contentRes.json();
 
-    if (trackRes.data) {
-      setExam({ id: trackRes.data.id, name: trackRes.data.name } as any);
-    } else {
-      const examRes = await supabase.from('exams').select('*').eq('id', examId).maybeSingle();
-      setExam(examRes.data);
+    if (!contentRes.ok) {
+      router.push('/dashboard/subscriptions');
+      return;
     }
-    if (cardsRes.data) {
-      setFlashcards([...cardsRes.data].sort(() => Math.random() - 0.5));
+
+    if (contentJson.track) {
+      setExam({ id: contentJson.track.id, name: contentJson.track.name } as any);
+    }
+
+    if (contentJson.content?.length > 0) {
+      setFlashcards([...contentJson.content].sort(() => Math.random() - 0.5));
     }
 
     const { data: newSession } = await supabase

@@ -2,9 +2,10 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
+import { Loader2, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabase';
 import { BarChart3, BookOpen, Users, LayoutDashboard, HelpCircle, Layers, MessageSquare, Sparkles } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -41,6 +42,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   if (profile.role !== 'admin') return null;
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push('/auth/login');
+  }
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -80,11 +86,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
         </nav>
 
-        <div className="p-3 border-t border-slate-800">
+        <div className="p-3 border-t border-slate-800 space-y-1">
           <Link href="/admin" className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors px-3 py-2">
             <LayoutDashboard className="w-4 h-4" />
             Admin Home
           </Link>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex w-full items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors px-3 py-2"
+          >
+            <LogOut className="w-4 h-4" />
+            Logout
+          </button>
         </div>
       </aside>
 

@@ -13,6 +13,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { hasActiveTrackAccess } from '@/lib/access';
+import { authenticatedFetch } from '@/lib/api';
 import { useVoice, parseVoiceAnswer } from '@/hooks/useVoice';
 import type { Question, Exam, PracticeSession } from '@/types/database';
 import Link from 'next/link';
@@ -111,31 +112,20 @@ function MCQPracticeContent() {
       return;
     }
 
-    // Load track name (try exam_tracks first, fall back to exams)
-    const { data: trackData } = await supabase
-      .from('exam_tracks')
-      .select('id, name')
-      .eq('id', targetTrackId)
-      .maybeSingle();
+    const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=mcq&exam=${targetTrackId}`);
+    const contentJson = await contentRes.json();
 
-    if (trackData) {
-      setExam({ id: trackData.id, name: trackData.name } as any);
-    } else {
-      const { data: examData } = await supabase.from('exams').select('*').eq('id', targetTrackId).maybeSingle();
-      setExam(examData);
+    if (!contentRes.ok) {
+      router.push('/dashboard/subscriptions');
+      return;
     }
 
-    // Load questions by exam_track_id
-    const { data: questionsData } = await supabase
-      .from('questions')
-      .select('*')
-      .eq('exam_track_id', targetTrackId)
-      .eq('active', true)
-      .eq('reviewed', true)
-      .limit(100);
+    if (contentJson.track) {
+      setExam({ id: contentJson.track.id, name: contentJson.track.name } as any);
+    }
 
-    if (questionsData && questionsData.length > 0) {
-      const shuffled = [...questionsData].sort(() => Math.random() - 0.5);
+    if (contentJson.content?.length > 0) {
+      const shuffled = [...contentJson.content].sort(() => Math.random() - 0.5);
       setQuestions(shuffled);
     }
 

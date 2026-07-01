@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import { hasActiveTrackAccess } from '@/lib/access';
+import { authenticatedFetch } from '@/lib/api';
 import type { CaseVignette, Exam, PracticeSession } from '@/types/database';
 
 export default function VignettesPage() {
@@ -62,17 +63,21 @@ function VignettesContent() {
       return;
     }
 
-    const [trackRes, vigRes] = await Promise.all([
-      supabase.from('exam_tracks').select('id, name').eq('id', examId).maybeSingle(),
-      supabase.from('case_vignettes').select('*').eq('exam_track_id', examId).eq('active', true).eq('reviewed', true).limit(10),
-    ]);
-    if (trackRes.data) {
-      setExam({ id: trackRes.data.id, name: trackRes.data.name } as any);
-    } else {
-      const examRes = await supabase.from('exams').select('*').eq('id', examId).maybeSingle();
-      setExam(examRes.data);
+    const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=vignettes&exam=${examId}`);
+    const contentJson = await contentRes.json();
+
+    if (!contentRes.ok) {
+      router.push('/dashboard/subscriptions');
+      return;
     }
-    if (vigRes.data) setVignettes([...vigRes.data].sort(() => Math.random() - 0.5));
+
+    if (contentJson.track) {
+      setExam({ id: contentJson.track.id, name: contentJson.track.name } as any);
+    }
+
+    if (contentJson.content?.length > 0) {
+      setVignettes([...contentJson.content].sort(() => Math.random() - 0.5));
+    }
 
     const { data: newSession } = await supabase
       .from('practice_sessions')
