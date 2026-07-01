@@ -9,9 +9,9 @@ import {
   CheckCircle,
   Eye,
   EyeOff,
+  AlertCircle,
   Loader2,
   Lock,
-  Mail,
   RotateCcw,
   ShieldCheck,
 } from 'lucide-react';
@@ -117,6 +117,8 @@ function SignupContent() {
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [checkoutUserId, setCheckoutUserId] = useState('');
+  const [checkoutError, setCheckoutError] = useState('');
 
   function buildRedirectUrl() {
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
@@ -196,6 +198,8 @@ function SignupContent() {
       await startSignupCheckout(data.user.id);
     } catch (checkoutError: any) {
       setLoading(false);
+      setCheckoutUserId(data.user.id);
+      setCheckoutError(checkoutError.message || 'Checkout could not be started.');
       toast({
         title: 'Checkout could not start',
         description: checkoutError.message,
@@ -210,6 +214,24 @@ function SignupContent() {
       if (profile?.role === 'admin') {
         router.push('/admin');
       }
+    }
+  }
+
+  async function handleRetryCheckout() {
+    if (!checkoutUserId) return;
+
+    setLoading(true);
+    setCheckoutError('');
+    try {
+      await startSignupCheckout(checkoutUserId);
+    } catch (err: any) {
+      setLoading(false);
+      setCheckoutError(err.message || 'Checkout could not be started.');
+      toast({
+        title: 'Checkout could not start',
+        description: err.message,
+        variant: 'destructive',
+      });
     }
   }
 
@@ -229,21 +251,28 @@ function SignupContent() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="w-full max-w-md text-center rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-50 border border-blue-100 mb-6">
-            <Mail className="w-8 h-8 text-blue-600" />
+            <AlertCircle className="w-8 h-8 text-blue-600" />
           </div>
 
-          <h1 className="text-2xl font-bold text-slate-950 mb-2">Check your email</h1>
-          <p className="text-slate-600 mb-1">We sent a verification link to</p>
-          <p className="text-blue-600 font-medium mb-8">{email}</p>
+          <h1 className="text-2xl font-bold text-slate-950 mb-2">Checkout did not open</h1>
+          <p className="text-slate-600 mb-1">Your account was created for</p>
+          <p className="text-blue-600 font-medium mb-6">{email}</p>
+
+          {checkoutError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 text-left">
+              <p className="text-sm font-medium text-red-800">Checkout error</p>
+              <p className="text-sm text-red-700 mt-1">{checkoutError}</p>
+            </div>
+          )}
 
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 mb-6 text-left space-y-3">
             <div className="flex items-start gap-3">
               <CheckCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-              <p className="text-slate-700 text-sm">Your account was created, but checkout did not open</p>
+              <p className="text-slate-700 text-sm">Click retry to continue to secure Stripe checkout for {trackInfo.name}</p>
             </div>
             <div className="flex items-start gap-3">
               <CheckCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-              <p className="text-slate-700 text-sm">Use the verification email or sign in later to continue with {trackInfo.name}</p>
+              <p className="text-slate-700 text-sm">Stripe sends the payment confirmation after payment succeeds</p>
             </div>
             <div className="flex items-start gap-3">
               <CheckCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
@@ -251,23 +280,32 @@ function SignupContent() {
             </div>
           </div>
 
+          <Button className="w-full mb-3" onClick={handleRetryCheckout} disabled={loading || !checkoutUserId}>
+            {loading ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Lock className="w-4 h-4 mr-2" />
+            )}
+            Retry Stripe Checkout
+          </Button>
+
           <Button variant="outline" className="w-full mb-4" onClick={handleResend} disabled={resending}>
             {resending ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
               <RotateCcw className="w-4 h-4 mr-2" />
             )}
-            Resend verification email
+            Resend account verification email
           </Button>
 
           <p className="text-sm text-slate-500">
             Wrong email?{' '}
             <button onClick={() => setSubmitted(false)} className="text-blue-600 hover:underline">
-              Go back
+              Edit details
             </button>
             {' '}or{' '}
             <Link href="/auth/login" className="text-blue-600 hover:underline">
-              Sign in
+              Sign in regularly
             </Link>
           </p>
         </div>
@@ -447,7 +485,7 @@ function SignupContent() {
 
             <p className="text-xs text-slate-500 text-center flex items-center justify-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5" />
-              Secure checkout follows account verification.
+              Secure Stripe checkout opens after account creation.
             </p>
 
             <p className="text-xs text-slate-500 text-center">
