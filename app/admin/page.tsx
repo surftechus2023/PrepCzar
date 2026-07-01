@@ -63,7 +63,7 @@ export default function AdminOverviewPage() {
           <p className="text-muted-foreground mt-1">Platform health and content statistics</p>
         </div>
         <Button asChild>
-          <Link href="/admin/generate">Generate AI Content</Link>
+          <Link href="/admin/generate">Generate Content</Link>
         </Button>
       </div>
 
@@ -91,7 +91,6 @@ export default function AdminOverviewPage() {
         })}
       </div>
 
-      {/* Quick actions */}
       <div className="grid md:grid-cols-2 gap-6">
         <Card className="border-border">
           <CardHeader>
@@ -99,10 +98,11 @@ export default function AdminOverviewPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             {[
+              { label: 'Generate Content', href: '/admin/generate', desc: 'Create questions, flashcards and vignettes' },
               { label: 'Manage Questions', href: '/admin/questions', desc: 'Review, edit and publish questions' },
-              { label: 'Generate AI Content', href: '/admin/generate', desc: 'Use AI to create new questions' },
               { label: 'Manage Flashcards', href: '/admin/flashcards', desc: 'Add and edit flashcard content' },
               { label: 'Manage Vignettes', href: '/admin/vignettes', desc: 'Manage clinical case scenarios' },
+              { label: 'Student Analytics', href: '/admin/analytics', desc: 'Review attempts, scores and exam readiness' },
             ].map((action) => (
               <Link
                 key={action.href}
@@ -121,15 +121,15 @@ export default function AdminOverviewPage() {
 
         <Card className="border-border">
           <CardHeader>
-            <CardTitle className="text-base">Content Guidelines</CardTitle>
+            <CardTitle className="text-base">Admin Flow</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3 text-sm text-muted-foreground">
-              <p>• AI-generated content starts with <code className="bg-secondary px-1 rounded">reviewed: false</code></p>
-              <p>• Review and approve each question before publishing</p>
-              <p>• Set <code className="bg-secondary px-1 rounded">active: true</code> to make content available to students</p>
-              <p>• All content must include English — Spanish and French are optional</p>
-              <p>• Verify clinical accuracy before approving any question</p>
+              <p>• Use Generate Content to create questions, flashcards, and vignettes.</p>
+              <p>• Review generated items in their content areas before students see them.</p>
+              <p>• Set <code className="bg-secondary px-1 rounded">active: true</code> and <code className="bg-secondary px-1 rounded">reviewed: true</code> to publish.</p>
+              <p>• Exams define categories, tracks, and topics used by generated content.</p>
+              <p>• Analytics shows student attempts, scores, readiness, and weak areas.</p>
             </div>
           </CardContent>
         </Card>

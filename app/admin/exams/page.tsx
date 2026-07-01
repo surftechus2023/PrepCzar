@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { supabase } from '@/lib/supabase';
+import { authenticatedFetch } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import type { ExamCategory, ExamTrack, Topic } from '@/types/database';
 
@@ -28,53 +28,35 @@ export default function AdminExamsPage() {
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
-    const [catsRes, tracksRes, topicsRes] = await Promise.all([
-      supabase.from('exam_categories').select('*').order('display_order'),
-      supabase.from('exam_tracks').select('*').order('display_order'),
-      supabase.from('topics').select('*').order('display_order'),
-    ]);
+    const res = await authenticatedFetch('/api/admin/exams');
+    const data = await res.json();
 
-    const cats = (catsRes.data || []) as ExamCategory[];
-    const tracks = (tracksRes.data || []) as ExamTrack[];
-    const topics = (topicsRes.data || []) as Topic[];
+    if (!res.ok) {
+      toast({ title: 'Could not load exams', description: data.error, variant: 'destructive' });
+      setLoading(false);
+      return;
+    }
 
-    const topicsByTrack: Record<string, Topic[]> = {};
-    topics.forEach(t => {
-      if (t.exam_track_id) {
-        if (!topicsByTrack[t.exam_track_id]) topicsByTrack[t.exam_track_id] = [];
-        topicsByTrack[t.exam_track_id].push(t);
-      }
-    });
-
-    const tracksByCategory: Record<string, TrackWithTopics[]> = {};
-    tracks.forEach(t => {
-      if (!tracksByCategory[t.category_id]) tracksByCategory[t.category_id] = [];
-      tracksByCategory[t.category_id].push({ ...t, topics: topicsByTrack[t.id] || [] });
-    });
-
-    setCategories(cats.map(c => ({ ...c, tracks: tracksByCategory[c.id] || [] })));
+    setCategories(data.categories || []);
     setLoading(false);
   }
 
   async function addTopic(trackId: string) {
     if (!newTopicText.trim()) return;
 
-    const track = categories.flatMap(c => c.tracks).find(t => t.id === trackId);
-    const order = (track?.topics.length || 0) + 1;
+    const res = await authenticatedFetch('/api/admin/exams', {
+      method: 'POST',
+      body: JSON.stringify({ trackId, title: newTopicText }),
+    });
+    const data = await res.json();
 
-    const { data, error } = await (supabase as any).from('topics').insert({
-      exam_track_id: trackId,
-      title: newTopicText.trim(),
-      display_order: order,
-    }).select().single();
-
-    if (error) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    if (!res.ok) {
+      toast({ title: 'Error', description: data.error, variant: 'destructive' });
     } else {
       setCategories(prev => prev.map(cat => ({
         ...cat,
         tracks: cat.tracks.map(t =>
-          t.id === trackId ? { ...t, topics: [...t.topics, data] } : t
+          t.id === trackId ? { ...t, topics: [...t.topics, data.topic] } : t
         ),
       })));
       setNewTopicText('');
@@ -83,7 +65,17 @@ export default function AdminExamsPage() {
   }
 
   async function toggleTrack(track: ExamTrack) {
-    await (supabase as any).from('exam_tracks').update({ active: !track.active }).eq('id', track.id);
+    const res = await authenticatedFetch('/api/admin/exams', {
+      method: 'PATCH',
+      body: JSON.stringify({ trackId: track.id, active: !track.active }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      toast({ title: 'Error', description: data.error, variant: 'destructive' });
+      return;
+    }
+
     setCategories(prev => prev.map(cat => ({
       ...cat,
       tracks: cat.tracks.map(t => t.id === track.id ? { ...t, active: !t.active } : t),

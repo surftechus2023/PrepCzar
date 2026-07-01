@@ -5,19 +5,18 @@ import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import Link from 'next/link';
-import { BookOpen, Users, LayoutDashboard, HelpCircle, Layers, MessageSquare, Sparkles, ClipboardCheck } from 'lucide-react';
+import { BarChart3, BookOpen, Users, LayoutDashboard, HelpCircle, Layers, MessageSquare, Sparkles } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 const adminNav = [
   { icon: LayoutDashboard, label: 'Overview', href: '/admin' },
   { icon: BookOpen, label: 'Exams', href: '/admin/exams' },
+  { icon: Sparkles, label: 'Generate Content', href: '/admin/generate' },
   { icon: HelpCircle, label: 'Questions', href: '/admin/questions' },
   { icon: Layers, label: 'Flashcards', href: '/admin/flashcards' },
   { icon: MessageSquare, label: 'Vignettes', href: '/admin/vignettes' },
-  { icon: Sparkles, label: 'AI Generate', href: '/admin/generate' },
-  { icon: Sparkles, label: 'Question Gen', href: '/admin/content-generation' },
-  { icon: ClipboardCheck, label: 'AI Review', href: '/admin/review-questions' },
+  { icon: BarChart3, label: 'Analytics', href: '/admin/analytics' },
   { icon: Users, label: 'Users', href: '/admin/users' },
 ];
 
