@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/lib/supabase';
 import { authenticatedFetch } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import type { ExamCategory, ExamTrack, Topic } from '@/types/database';
@@ -39,42 +38,48 @@ export default function ContentGenerationPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    supabase
-      .from('exam_categories')
-      .select('*')
-      .order('display_order')
-      .then(({ data }) => setCategories(data || []));
+    loadOptions();
   }, []);
 
   useEffect(() => {
     if (!selectedCategory) return;
 
-    supabase
-      .from('exam_tracks')
-      .select('*')
-      .eq('category_id', selectedCategory)
-      .order('display_order')
-      .then(({ data }) => {
-        setTracks(data || []);
-        setSelectedTrack('');
-        setTopics([]);
-        setSelectedTopic('');
-      });
+    loadOptions({ categoryId: selectedCategory });
   }, [selectedCategory]);
 
   useEffect(() => {
     if (!selectedTrack) return;
 
-    supabase
-      .from('topics')
-      .select('*')
-      .eq('exam_track_id', selectedTrack)
-      .order('display_order')
-      .then(({ data }) => {
-        setTopics(data || []);
-        setSelectedTopic('');
-      });
+    loadOptions({ categoryId: selectedCategory, trackId: selectedTrack });
   }, [selectedTrack]);
+
+  async function loadOptions(params: { categoryId?: string; trackId?: string } = {}) {
+    const query = new URLSearchParams();
+    if (params.categoryId) query.set('categoryId', params.categoryId);
+    if (params.trackId) query.set('trackId', params.trackId);
+
+    const response = await authenticatedFetch(`/api/admin/generation-options?${query.toString()}`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      toast({ title: 'Could not load generation options', description: data.error, variant: 'destructive' });
+      return;
+    }
+
+    setCategories(data.categories || []);
+
+    if (params.categoryId && !params.trackId) {
+      setTracks(data.tracks || []);
+      setSelectedTrack('');
+      setTopics([]);
+      setSelectedTopic('');
+    }
+
+    if (params.trackId) {
+      setTopics(data.topics || []);
+      setSelectedTopic('');
+    }
+  }
 
   function updateDifficultyMix(key: keyof typeof difficultyMix, value: number) {
     setDifficultyMix((current) => ({ ...current, [key]: value }));

@@ -5,7 +5,6 @@ import { Sparkles, Loader2, CheckCircle, AlertCircle, ChevronDown } from 'lucide
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { authenticatedFetch } from '@/lib/api';
 import type { ExamCategory, ExamTrack, Topic } from '@/types/database';
@@ -34,28 +33,48 @@ export default function AdminGeneratePage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    supabase.from('exam_categories').select('*').order('display_order').then(({ data }) => setCategories(data || []));
+    loadOptions();
   }, []);
 
   useEffect(() => {
     if (selectedCategory) {
-      supabase.from('exam_tracks').select('*').eq('category_id', selectedCategory).order('display_order').then(({ data }) => {
-        setTracks(data || []);
-        setSelectedTrack('');
-        setTopics([]);
-        setSelectedTopic('');
-      });
+      loadOptions({ categoryId: selectedCategory });
     }
   }, [selectedCategory]);
 
   useEffect(() => {
     if (selectedTrack) {
-      supabase.from('topics').select('*').eq('exam_track_id', selectedTrack).order('display_order').then(({ data }) => {
-        setTopics(data || []);
-        setSelectedTopic('');
-      });
+      loadOptions({ categoryId: selectedCategory, trackId: selectedTrack });
     }
   }, [selectedTrack]);
+
+  async function loadOptions(params: { categoryId?: string; trackId?: string } = {}) {
+    const query = new URLSearchParams();
+    if (params.categoryId) query.set('categoryId', params.categoryId);
+    if (params.trackId) query.set('trackId', params.trackId);
+
+    const res = await authenticatedFetch(`/api/admin/generation-options?${query.toString()}`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      toast({ title: 'Could not load generation options', description: data.error, variant: 'destructive' });
+      return;
+    }
+
+    setCategories(data.categories || []);
+
+    if (params.categoryId && !params.trackId) {
+      setTracks(data.tracks || []);
+      setSelectedTrack('');
+      setTopics([]);
+      setSelectedTopic('');
+    }
+
+    if (params.trackId) {
+      setTopics(data.topics || []);
+      setSelectedTopic('');
+    }
+  }
 
   async function handleGenerate() {
     if (!selectedTrack || !selectedTopic) {
