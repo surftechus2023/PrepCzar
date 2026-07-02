@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { formatExamTrackRulesForPrompt } from '@/lib/content-generation/exam-track-rules';
 import { getOpenAIClient } from './client';
 
 export const QUESTION_GENERATOR_MODEL = 'gpt-4o-mini';
@@ -98,6 +99,9 @@ Topic:
 
 Difficulty mix: ${formatMix(parsedInput.difficultyMix)}
 Cognitive level mix: ${formatMix(parsedInput.cognitiveLevelMix)}
+
+Exam-track-specific generation rules:
+${formatExamTrackRulesForPrompt(parsedInput.examTrackName)}
 
 Strict alignment and quality rules:
 - Do not copy official exam questions.

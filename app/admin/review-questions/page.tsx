@@ -93,11 +93,7 @@ export default function ReviewQuestionsPage() {
   }
 
   async function publish(question: ReviewQuestion) {
-    const canPublish = (
-      question.integrity_status === 'passed'
-      && (question.blueprint_alignment_score ?? 0) >= 90
-      && (question.difficulty_quality_score ?? 0) >= 80
-    ) || question.integrity_override;
+    const canPublish = question.integrity_status === 'passed' || question.integrity_override;
     const values: Partial<Question> = { reviewed: true, active: true };
 
     if (!canPublish) {
@@ -361,8 +357,10 @@ export default function ReviewQuestionsPage() {
                           <p><span className="font-medium">Integrity score:</span> {question.integrity_score ?? 0}</p>
                           <p><span className="font-medium">Blueprint alignment:</span> {question.blueprint_alignment_score ?? 0}</p>
                           <p><span className="font-medium">Difficulty quality:</span> {question.difficulty_quality_score ?? 0}</p>
+                          <p><span className="font-medium">Intended difficulty:</span> {question.difficulty}</p>
                           <p><span className="font-medium">Predicted difficulty:</span> {question.predicted_difficulty || 'Not checked'}</p>
-                          <p><span className="font-medium">Cognitive level:</span> {question.cognitive_level_detected || 'Not checked'}</p>
+                          <p><span className="font-medium">Intended cognitive level:</span> {question.cognitive_level || 'Not provided'}</p>
+                          <p><span className="font-medium">Detected cognitive level:</span> {question.cognitive_level_detected || 'Not checked'}</p>
                           <p><span className="font-medium">Plagiarism risk:</span> {question.plagiarism_risk_score ?? 0}</p>
                           <p><span className="font-medium">Improvement attempts:</span> {question.improvement_attempts ?? 0}/2</p>
                           <p><span className="font-medium">Auto-improved:</span> {question.auto_improved ? 'Yes' : 'No'}</p>
@@ -392,6 +390,11 @@ export default function ReviewQuestionsPage() {
                             <p className="font-medium">Improvement notes</p>
                             <p className="text-muted-foreground whitespace-pre-wrap">{question.improvement_notes || 'None'}</p>
                           </div>
+                          {(question.improvement_attempts ?? 0) >= 2 && question.integrity_status !== 'passed' && (
+                            <p className="text-amber-700 dark:text-amber-300">
+                              Auto-improvement attempts exhausted. Manual review required.
+                            </p>
+                          )}
                           {question.integrity_override && (
                             <p className="text-amber-700 dark:text-amber-300">
                               Admin override recorded: {question.integrity_override_reason || 'No reason provided'}

@@ -15,6 +15,7 @@ import {
   evaluateGeneratedQuestionIntegrity,
   improveGeneratedQuestionOnce,
 } from '@/lib/content-integrity/question-improver';
+import { getExamTrackRules, isRecallOnlyStem } from '@/lib/content-generation/exam-track-rules';
 
 export const dynamic = 'force-dynamic';
 
@@ -93,6 +94,7 @@ export async function POST(req: NextRequest) {
     }
 
     const examName = trackRes.data.full_name || trackRes.data.name;
+    const examTrackRules = getExamTrackRules(examName);
     let selectedSubtopic: any = null;
     if (body.subtopicId) {
       const { data: subtopicData, error: subtopicError } = await supabaseAdmin
@@ -245,8 +247,9 @@ export async function POST(req: NextRequest) {
         if (
           integrity.integrity_status !== 'needs_metadata'
           && (
-            integrity.blueprint_alignment_score < 90
-            || integrity.difficulty_quality_score < 80
+            (examTrackRules.preferScenarioBased && isRecallOnlyStem(question.question))
+            || integrity.blueprint_alignment_score < 80
+            || integrity.difficulty_quality_score < examTrackRules.minimumDifficultyQualityScore
             || integrity.integrity_score < 85
           )
         ) {

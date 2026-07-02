@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { checkAndUpdateQuestionIntegrity } from '@/lib/content-integrity/question-integrity-checker';
 import { autoImproveStoredQuestion } from '@/lib/content-integrity/question-improver';
+import { getExamTrackRules } from '@/lib/content-generation/exam-track-rules';
 import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
 
 export const dynamic = 'force-dynamic';
@@ -83,6 +84,7 @@ export async function POST(req: NextRequest) {
     }
 
     const trackName = trackRes.data.full_name || trackRes.data.name;
+    const examTrackRules = getExamTrackRules(trackName);
     examName = trackName;
     const topicTitle = topicRes.data.title;
     const { generateMCQs, generateFlashcards, generateVignettes } = await import('@/lib/openai');
@@ -146,8 +148,8 @@ export async function POST(req: NextRequest) {
           if (
             checked.result.integrity_status !== 'needs_metadata'
             && (
-              checked.result.blueprint_alignment_score < 90
-              || checked.result.difficulty_quality_score < 80
+              checked.result.blueprint_alignment_score < 80
+              || checked.result.difficulty_quality_score < examTrackRules.minimumDifficultyQualityScore
               || checked.result.integrity_score < 85
             )
           ) {

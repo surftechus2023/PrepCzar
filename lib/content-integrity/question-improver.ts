@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { formatExamTrackRulesForPrompt } from '@/lib/content-generation/exam-track-rules';
 import { evaluateQuestionIntegrity, type QuestionContext, type QuestionIntegrityResult } from '@/lib/content-integrity/question-integrity-checker';
 import { getOpenAIClient } from '@/lib/openai/client';
 import { generatedQuestionSchema, type GeneratedQuestion } from '@/lib/openai/question-generator';
@@ -179,6 +180,9 @@ Preserve exactly:
 - Intended difficulty: ${question.difficulty}
 - Intended cognitive level: ${question.cognitive_level}
 
+Exam-track-specific rewrite rules:
+${formatExamTrackRulesForPrompt(metadata.examTrackName)}
+
 Current scores:
 - blueprint_alignment_score: ${integrityResult.blueprint_alignment_score} (target 90+)
 - difficulty_quality_score: ${integrityResult.difficulty_quality_score} (target 80+)
@@ -192,10 +196,14 @@ Original question JSON:
 ${JSON.stringify(question, null, 2)}
 
 Rewrite requirements:
+- Meaningfully rewrite weak items; do not make only small wording edits.
 - Keep the same selected exam track, topic, subtopic, learning objective, intended cognitive level, and intended difficulty.
 - Judge and improve blueprint alignment only against the provided exam blueprint metadata, not general model knowledge.
 - If blueprint_alignment_score is below 90, rewrite the item to more directly test the provided learning objective and blueprint reference text.
 - Make the clinical/professional scenario clearly match the provided blueprint text.
+- If this is an LCSW recall-style item, rewrite it as a clinical case vignette testing assessment priority, best next step, differential diagnosis, ethical decision-making, risk/safety judgment, or intervention planning.
+- If this is an NCLEX-RN item, rewrite it toward clinical judgment, safety, prioritization, delegation, or nursing-process reasoning.
+- If this is an NCLEX-PN item, preserve PN scope and use safety/basic care/reporting/escalation reasoning.
 - Do not make it generic.
 - Do not switch topics.
 - Do not copy official exam content or copyrighted test-bank content.

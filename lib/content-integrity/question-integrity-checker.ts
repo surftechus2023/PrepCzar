@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getExamTrackRules, isRecallOnlyStem } from '@/lib/content-generation/exam-track-rules';
 import type { Question } from '@/types/database';
 
 export type IntegrityStatus = 'pending' | 'passed' | 'needs_review' | 'needs_improvement' | 'needs_human_review' | 'needs_metadata' | 'failed';
@@ -240,8 +241,9 @@ function evaluateBlueprintAlignment(question: Question, context: QuestionContext
   });
 
   if (!availableWeight) return { score: 0, hasReliableBlueprintMetadata: false };
+  const rawScore = Math.round(Math.max(35, Math.min(100, (score / availableWeight) * 100)));
   return {
-    score: Math.round(Math.max(35, Math.min(100, (score / availableWeight) * 100))),
+    score: rawScore >= 80 ? Math.max(80, rawScore) : rawScore,
     hasReliableBlueprintMetadata,
   };
 }
@@ -314,11 +316,21 @@ function isTooLowForTrack(question: Question, context: QuestionContext, detected
 }
 
 function evaluateDifficultyQuality(question: Question, context: QuestionContext, detected: CognitiveLevel, predictedDifficulty: 'easy' | 'medium' | 'hard') {
-  let score = 100;
+  const trackName = `${context.examTrack?.name || ''} ${context.examTrack?.full_name || ''}`;
+  const rules = getExamTrackRules(trackName);
   const stemTokens = tokenize(question.question_en);
   const intended = question.difficulty || 'medium';
+  const difficultyRank = { easy: 1, medium: 2, hard: 3 };
+  const delta = difficultyRank[predictedDifficulty] - difficultyRank[intended];
+  let score = 95;
 
-  if (predictedDifficulty !== intended) score -= 20;
+  if (delta === 0) score = 95;
+  else if (delta === 1) score = 85;
+  else if (delta === -1) score = 68;
+  else score = 50;
+
+  if (intended === 'medium' && predictedDifficulty === 'hard') score = 85;
+  if (detected === 'clinical judgment' && intended === 'medium' && predictedDifficulty === 'hard') score = 90;
   if (isTooLowForTrack(question, context, detected)) score -= 35;
   if ((intended === 'medium' || intended === 'hard') && detected === 'recall') score -= 30;
   if (intended === 'hard' && !['analysis', 'clinical judgment', 'safety', 'prioritization', 'ethics'].includes(detected)) score -= 20;
@@ -326,6 +338,7 @@ function evaluateDifficultyQuality(question: Question, context: QuestionContext,
   if (!/\b(case|client|patient|scenario|first|priority|best|most appropriate|assessment|intervention|response)\b/i.test(question.question_en) && detected !== 'recall') {
     score -= 15;
   }
+  if (rules.preferScenarioBased && isRecallOnlyStem(question.question_en)) score -= 35;
 
   return Math.max(0, Math.min(100, score));
 }
@@ -342,6 +355,8 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
   const biasFlags = evaluateBias(question);
   const plagiarismRiskScore = evaluatePlagiarismRisk(question, context, duplicateHash);
   const notes: string[] = [];
+  const trackName = `${context.examTrack?.name || ''} ${context.examTrack?.full_name || ''}`;
+  const rules = getExamTrackRules(trackName);
 
   if (!blueprintAlignment.hasReliableBlueprintMetadata) {
     notes.push('Blueprint metadata was missing, so alignment could not be reliably scored.');
@@ -351,6 +366,7 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
   if (difficultyQualityScore < 80) notes.push('Question is below the 80+ professional difficulty quality target and should be improved.');
   if (!cognitiveLevelMatches(question, cognitiveLevelDetected)) notes.push('Detected cognitive level does not clearly match the intended cognitive level.');
   if (isTooLowForTrack(question, context, cognitiveLevelDetected)) notes.push('Question may be too low-level for this exam track.');
+  if (rules.preferScenarioBased && isRecallOnlyStem(question.question_en)) notes.push(`${rules.label} items should not use simple recall phrasing; rewrite as a scenario-based application, analysis, or clinical judgment item.`);
   if (predictedDifficulty !== question.difficulty) notes.push(`Predicted difficulty (${predictedDifficulty}) differs from intended difficulty (${question.difficulty}).`);
   if (plagiarismRiskScore > 70) notes.push('Question has high similarity to existing content and needs originality review.');
   if (biasFlags.length) notes.push('Bias/fairness flags require human review.');
@@ -362,15 +378,17 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
   const difficultyPoints = predictedDifficulty === question.difficulty ? 10 : 5;
   const biasPoints = biasFlags.length ? 4 : 10;
   const originalityPoints = plagiarismRiskScore > 70 ? 0 : plagiarismRiskScore >= 45 ? 2 : 5;
-  const integrityScore = Math.max(0, Math.min(100, itemWritingPoints + distractorPoints + blueprintPoints + cognitivePoints + difficultyPoints + biasPoints + originalityPoints));
+  let integrityScore = Math.max(0, Math.min(100, itemWritingPoints + distractorPoints + blueprintPoints + cognitivePoints + difficultyPoints + biasPoints + originalityPoints));
+  if (rules.preferScenarioBased && isRecallOnlyStem(question.question_en)) integrityScore = Math.min(integrityScore, 72);
 
   let status: IntegrityStatus = 'passed';
 
   if (!blueprintAlignment.hasReliableBlueprintMetadata) status = 'needs_metadata';
   else if (plagiarismRiskScore > 70) status = 'failed';
-  else if (blueprintAlignmentScore < 90 || difficultyQualityScore < 80) status = 'needs_improvement';
+  else if (blueprintAlignmentScore < 70) status = 'failed';
+  else if (blueprintAlignmentScore < 80 || difficultyQualityScore < rules.minimumDifficultyQualityScore) status = 'needs_improvement';
   else if (integrityScore < 75) status = 'needs_improvement';
-  else if (integrityScore < 85) status = 'needs_review';
+  else if (integrityScore < 80 || blueprintAlignmentScore < 90) status = 'needs_review';
   if (biasFlags.length && status === 'passed') status = 'needs_review';
 
   return {

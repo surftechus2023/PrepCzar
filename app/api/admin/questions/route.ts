@@ -103,8 +103,6 @@ export async function PATCH(req: NextRequest) {
     const nextActive = updateValues.active ?? current.active;
     const nextIntegrityStatus = updateValues.integrity_status ?? current.integrity_status;
     const nextIntegrityOverride = updateValues.integrity_override ?? current.integrity_override;
-    const nextBlueprintAlignmentScore = updateValues.blueprint_alignment_score ?? current.blueprint_alignment_score;
-    const nextDifficultyQualityScore = updateValues.difficulty_quality_score ?? current.difficulty_quality_score;
 
     if (
       nextActive === true
@@ -112,16 +110,12 @@ export async function PATCH(req: NextRequest) {
         !nextReviewed
         || (
           nextIntegrityOverride !== true
-          && (
-            nextIntegrityStatus !== 'passed'
-            || nextBlueprintAlignmentScore < 90
-            || nextDifficultyQualityScore < 80
-          )
+          && nextIntegrityStatus !== 'passed'
         )
       )
     ) {
       return NextResponse.json(
-        { error: 'Questions can only be published after review, passed integrity, blueprint score >= 90, and difficulty score >= 80, unless an admin override is recorded.' },
+        { error: 'Questions can only be published after review and passed integrity, unless an admin override is recorded.' },
         { status: 400 }
       );
     }
