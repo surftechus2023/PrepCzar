@@ -8,13 +8,20 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { authenticatedFetch } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import type { ExamTrack, Question, Topic } from '@/types/database';
 
 interface ReviewQuestion extends Question {
-  exam_track?: Pick<ExamTrack, 'name' | 'slug'>;
-  topic?: Pick<Topic, 'title'>;
+  exam_track?: Pick<ExamTrack, 'name' | 'slug' | 'official_source_url' | 'official_exam_description'>;
+  topic?: Pick<Topic, 'title' | 'description' | 'official_blueprint_text' | 'official_weight_percent'>;
+  subtopic_record?: {
+    title?: string | null;
+    description?: string | null;
+    learning_objective?: string | null;
+    official_blueprint_text?: string | null;
+  } | null;
 }
 
 type EditState = Pick<
@@ -315,6 +322,29 @@ export default function ReviewQuestionsPage() {
                         <p><span className="font-medium">Learning objective:</span> {question.learning_objective || 'None'}</p>
                         <p><span className="font-medium">Review notes:</span> {question.review_notes || 'None'}</p>
                       </div>
+                      <Collapsible className="rounded-md border bg-muted/20 p-4 text-sm">
+                        <CollapsibleTrigger className="font-medium text-left">
+                          Blueprint context used for integrity check
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="mt-3 space-y-2 text-muted-foreground">
+                          <p><span className="font-medium text-foreground">Exam track:</span> {(question.exam_track as any)?.name || 'Unknown'}</p>
+                          <p><span className="font-medium text-foreground">Official source URL:</span> {(question.exam_track as any)?.official_source_url || 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">Exam description:</span> {(question.exam_track as any)?.official_exam_description || 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">Topic:</span> {(question.topic as any)?.title || 'Unknown'}</p>
+                          <p><span className="font-medium text-foreground">Topic description:</span> {(question.topic as any)?.description || 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">Topic blueprint text:</span> {(question.topic as any)?.official_blueprint_text || 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">Topic weight:</span> {(question.topic as any)?.official_weight_percent ?? 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">Subtopic:</span> {(question.subtopic_record as any)?.title || question.subtopic || 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">Subtopic description:</span> {(question.subtopic_record as any)?.description || 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">Subtopic learning objective:</span> {(question.subtopic_record as any)?.learning_objective || 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">Subtopic blueprint text:</span> {(question.subtopic_record as any)?.official_blueprint_text || 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">Question learning objective:</span> {question.learning_objective || 'Not provided'}</p>
+                          <div>
+                            <p className="font-medium text-foreground">Blueprint reference text</p>
+                            <p className="whitespace-pre-wrap">{question.blueprint_reference_text || 'Not provided'}</p>
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
                       <div className="rounded-md border bg-secondary/20 p-4 text-sm">
                         <div className="flex items-center gap-2 font-medium mb-3">
                           <ShieldCheck className="w-4 h-4" />

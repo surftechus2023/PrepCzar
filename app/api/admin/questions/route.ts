@@ -8,6 +8,8 @@ function isMissingColumn(errorMessage: string | undefined) {
   return message.includes('column') || message.includes('schema cache');
 }
 
+const QUESTION_SELECT = '*, exam_track:exam_tracks(name, slug, official_source_url, official_exam_description), topic:topics(title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(title, description, learning_objective, official_blueprint_text)';
+
 export async function GET(req: NextRequest) {
   try {
     const adminUser = await requireAdmin(req);
@@ -21,7 +23,7 @@ export async function GET(req: NextRequest) {
 
     let questionsQuery = supabaseAdmin
       .from('questions')
-      .select('*, exam_track:exam_tracks(name, slug), topic:topics(title)')
+      .select(QUESTION_SELECT)
       .order('created_at', { ascending: false })
       .limit(pendingAi ? 100 : 200);
 
@@ -34,7 +36,7 @@ export async function GET(req: NextRequest) {
     if (pendingAi && questionsError && isMissingColumn(questionsError.message)) {
       const fallback = await supabaseAdmin
         .from('questions')
-        .select('*, exam_track:exam_tracks(name, slug), topic:topics(title)')
+        .select(QUESTION_SELECT)
         .eq('reviewed', false)
         .order('created_at', { ascending: false })
         .limit(100);
@@ -128,7 +130,7 @@ export async function PATCH(req: NextRequest) {
       .from('questions')
       .update(updateValues)
       .eq('id', id)
-      .select('*, exam_track:exam_tracks(name, slug), topic:topics(title)')
+      .select(QUESTION_SELECT)
       .single();
 
     if (error) {

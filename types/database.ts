@@ -70,6 +70,8 @@ export interface Database {
           monthly_price: number;
           description: string;
           full_name: string;
+          official_source_url: string | null;
+          official_exam_description: string | null;
           active: boolean;
           display_order: number;
           created_at: string;
@@ -82,6 +84,8 @@ export interface Database {
           monthly_price: number;
           description?: string;
           full_name?: string;
+          official_source_url?: string | null;
+          official_exam_description?: string | null;
           active?: boolean;
           display_order?: number;
         };
@@ -93,6 +97,8 @@ export interface Database {
           monthly_price?: number;
           description?: string;
           full_name?: string;
+          official_source_url?: string | null;
+          official_exam_description?: string | null;
           active?: boolean;
           display_order?: number;
         };
@@ -131,6 +137,7 @@ export interface Database {
           exam_track_id: string | null;
           title: string;
           description: string;
+          official_blueprint_text: string | null;
           display_order: number;
           official_weight_percent: number | null;
           created_at: string;
@@ -141,6 +148,7 @@ export interface Database {
           exam_track_id?: string | null;
           title: string;
           description?: string;
+          official_blueprint_text?: string | null;
           display_order?: number;
           official_weight_percent?: number | null;
         };
@@ -150,8 +158,39 @@ export interface Database {
           exam_track_id?: string | null;
           title?: string;
           description?: string;
+          official_blueprint_text?: string | null;
           display_order?: number;
           official_weight_percent?: number | null;
+        };
+      };
+      subtopics: {
+        Row: {
+          id: string;
+          topic_id: string;
+          title: string;
+          description: string;
+          learning_objective: string;
+          official_blueprint_text: string;
+          display_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          topic_id: string;
+          title: string;
+          description?: string;
+          learning_objective?: string;
+          official_blueprint_text?: string;
+          display_order?: number;
+        };
+        Update: {
+          id?: string;
+          topic_id?: string;
+          title?: string;
+          description?: string;
+          learning_objective?: string;
+          official_blueprint_text?: string;
+          display_order?: number;
         };
       };
       questions: {
@@ -160,6 +199,8 @@ export interface Database {
           exam_id: string | null;
           exam_track_id: string | null;
           topic_id: string | null;
+          subtopic_id: string | null;
+          blueprint_reference_text: string | null;
           difficulty: 'easy' | 'medium' | 'hard';
           question_en: string;
           question_es: string;
@@ -195,7 +236,7 @@ export interface Database {
           review_notes: string | null;
           generation_batch_id: string | null;
           generated_by_ai: boolean;
-          integrity_status: 'pending' | 'passed' | 'needs_review' | 'needs_improvement' | 'needs_human_review' | 'failed';
+          integrity_status: 'pending' | 'passed' | 'needs_review' | 'needs_improvement' | 'needs_human_review' | 'needs_metadata' | 'failed';
           integrity_score: number;
           quality_flags: Json;
           bias_flags: Json;
@@ -223,6 +264,8 @@ export interface Database {
           exam_id?: string | null;
           exam_track_id?: string | null;
           topic_id?: string | null;
+          subtopic_id?: string | null;
+          blueprint_reference_text?: string | null;
           difficulty?: 'easy' | 'medium' | 'hard';
           question_en: string;
           question_es?: string;
@@ -258,7 +301,7 @@ export interface Database {
           review_notes?: string | null;
           generation_batch_id?: string | null;
           generated_by_ai?: boolean;
-          integrity_status?: 'pending' | 'passed' | 'needs_review' | 'needs_improvement' | 'needs_human_review' | 'failed';
+          integrity_status?: 'pending' | 'passed' | 'needs_review' | 'needs_improvement' | 'needs_human_review' | 'needs_metadata' | 'failed';
           integrity_score?: number;
           quality_flags?: Json;
           bias_flags?: Json;
@@ -285,6 +328,8 @@ export interface Database {
           exam_id?: string | null;
           exam_track_id?: string | null;
           topic_id?: string | null;
+          subtopic_id?: string | null;
+          blueprint_reference_text?: string | null;
           difficulty?: 'easy' | 'medium' | 'hard';
           question_en?: string;
           question_es?: string;
@@ -320,7 +365,7 @@ export interface Database {
           review_notes?: string | null;
           generation_batch_id?: string | null;
           generated_by_ai?: boolean;
-          integrity_status?: 'pending' | 'passed' | 'needs_review' | 'needs_improvement' | 'needs_human_review' | 'failed';
+          integrity_status?: 'pending' | 'passed' | 'needs_review' | 'needs_improvement' | 'needs_human_review' | 'needs_metadata' | 'failed';
           integrity_score?: number;
           quality_flags?: Json;
           bias_flags?: Json;
@@ -714,6 +759,7 @@ export type ExamCategory = Database['public']['Tables']['exam_categories']['Row'
 export type ExamTrack = Database['public']['Tables']['exam_tracks']['Row'];
 export type Exam = Database['public']['Tables']['exams']['Row'];
 export type Topic = Database['public']['Tables']['topics']['Row'];
+export type Subtopic = Database['public']['Tables']['subtopics']['Row'];
 export type Question = Database['public']['Tables']['questions']['Row'];
 export type Flashcard = Database['public']['Tables']['flashcards']['Row'];
 export type CaseVignette = Database['public']['Tables']['case_vignettes']['Row'];

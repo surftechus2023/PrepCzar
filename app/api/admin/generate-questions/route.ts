@@ -33,6 +33,7 @@ const cognitiveLevelMixSchema = z.object({
 const requestSchema = z.object({
   examTrackId: z.string().uuid(),
   topicId: z.string().uuid(),
+  subtopicId: z.string().uuid().optional().nullable(),
   subtopic: z.string().min(2),
   learningObjective: z.string().min(5),
   quantity: z.number().int().min(1).max(100),
@@ -75,13 +76,13 @@ export async function POST(req: NextRequest) {
     const [trackRes, topicRes] = await Promise.all([
       supabaseAdmin
         .from('exam_tracks')
-        .select('id, name, full_name')
+        .select('id, name, full_name, official_source_url, official_exam_description')
         .eq('id', body.examTrackId)
         .eq('active', true)
         .single(),
       supabaseAdmin
         .from('topics')
-        .select('id, title, exam_track_id')
+        .select('id, title, description, official_blueprint_text, official_weight_percent, exam_track_id')
         .eq('id', body.topicId)
         .eq('exam_track_id', body.examTrackId)
         .single(),
@@ -92,6 +93,25 @@ export async function POST(req: NextRequest) {
     }
 
     const examName = trackRes.data.full_name || trackRes.data.name;
+    let selectedSubtopic: any = null;
+    if (body.subtopicId) {
+      const { data: subtopicData, error: subtopicError } = await supabaseAdmin
+        .from('subtopics')
+        .select('id, title, description, learning_objective, official_blueprint_text')
+        .eq('id', body.subtopicId)
+        .eq('topic_id', body.topicId)
+        .maybeSingle();
+
+      if (subtopicError) throw new Error(subtopicError.message);
+      selectedSubtopic = subtopicData;
+    }
+    const effectiveSubtopic = selectedSubtopic?.title || body.subtopic;
+    const effectiveLearningObjective = selectedSubtopic?.learning_objective || body.learningObjective;
+    const blueprintReferenceText = [
+      selectedSubtopic?.official_blueprint_text,
+      topicRes.data.official_blueprint_text,
+      effectiveLearningObjective,
+    ].filter((value) => typeof value === 'string' && value.trim()).join('\n\n');
 
     const { data: batch, error: batchError } = await supabaseAdmin
       .from('ai_generation_batches')
@@ -139,10 +159,19 @@ export async function POST(req: NextRequest) {
       const generated = await generateQuestions({
         examTrackId: body.examTrackId,
         topicId: body.topicId,
+        subtopicId: body.subtopicId || null,
         examTrackName: examName,
+        officialSourceUrl: trackRes.data.official_source_url,
+        officialExamDescription: trackRes.data.official_exam_description,
         topicTitle: topicRes.data.title,
-        subtopic: body.subtopic,
-        learningObjective: body.learningObjective,
+        topicDescription: topicRes.data.description,
+        topicOfficialBlueprintText: topicRes.data.official_blueprint_text,
+        topicWeightPercent: topicRes.data.official_weight_percent,
+        subtopic: effectiveSubtopic,
+        subtopicDescription: selectedSubtopic?.description,
+        subtopicOfficialBlueprintText: selectedSubtopic?.official_blueprint_text,
+        learningObjective: effectiveLearningObjective,
+        blueprintReferenceText,
         quantity,
         difficultyMix: body.difficultyMix,
         cognitiveLevelMix: body.cognitiveLevelMix,
@@ -162,8 +191,8 @@ export async function POST(req: NextRequest) {
           examTrackId: body.examTrackId,
           topicId: body.topicId,
           topicTitle: topicRes.data.title,
-          subtopic: body.subtopic,
-          learningObjective: body.learningObjective,
+          subtopic: effectiveSubtopic,
+          learningObjective: effectiveLearningObjective,
           existingQuestions,
         });
 
@@ -189,9 +218,18 @@ export async function POST(req: NextRequest) {
             examTrackId: body.examTrackId,
             topicId: body.topicId,
             examTrackName: examName,
+            officialSourceUrl: trackRes.data.official_source_url,
+            officialExamDescription: trackRes.data.official_exam_description,
             topicTitle: topicRes.data.title,
-            subtopic: body.subtopic,
-            learningObjective: body.learningObjective,
+            topicDescription: topicRes.data.description,
+            topicOfficialBlueprintText: topicRes.data.official_blueprint_text,
+            topicWeightPercent: topicRes.data.official_weight_percent,
+            subtopicId: body.subtopicId || null,
+            subtopic: effectiveSubtopic,
+            subtopicDescription: selectedSubtopic?.description,
+            subtopicOfficialBlueprintText: selectedSubtopic?.official_blueprint_text,
+            learningObjective: effectiveLearningObjective,
+            blueprintReferenceText,
           },
           existingQuestions.map((existing, index) => ({
             id: `existing-${index}`,
@@ -205,9 +243,12 @@ export async function POST(req: NextRequest) {
         let improvementNotes: string | null = null;
 
         if (
-          integrity.blueprint_alignment_score < 90
-          || integrity.difficulty_quality_score < 80
-          || integrity.integrity_score < 85
+          integrity.integrity_status !== 'needs_metadata'
+          && (
+            integrity.blueprint_alignment_score < 90
+            || integrity.difficulty_quality_score < 80
+            || integrity.integrity_score < 85
+          )
         ) {
           const improved = await improveGeneratedQuestionOnce({
             question,
@@ -215,9 +256,18 @@ export async function POST(req: NextRequest) {
               examTrackId: body.examTrackId,
               topicId: body.topicId,
               examTrackName: examName,
+              officialSourceUrl: trackRes.data.official_source_url,
+              officialExamDescription: trackRes.data.official_exam_description,
               topicTitle: topicRes.data.title,
-              subtopic: body.subtopic,
-              learningObjective: body.learningObjective,
+              topicDescription: topicRes.data.description,
+              topicOfficialBlueprintText: topicRes.data.official_blueprint_text,
+              topicWeightPercent: topicRes.data.official_weight_percent,
+              subtopicId: body.subtopicId || null,
+              subtopic: effectiveSubtopic,
+              subtopicDescription: selectedSubtopic?.description,
+              subtopicOfficialBlueprintText: selectedSubtopic?.official_blueprint_text,
+              learningObjective: effectiveLearningObjective,
+              blueprintReferenceText,
             },
             integrityResult: integrity,
           });
@@ -241,6 +291,8 @@ export async function POST(req: NextRequest) {
         const row = {
           exam_track_id: body.examTrackId,
           topic_id: body.topicId,
+          subtopic_id: body.subtopicId || null,
+          blueprint_reference_text: blueprintReferenceText || null,
           question_en: question.question,
           option_a_en: question.option_a,
           option_b_en: question.option_b,
@@ -267,8 +319,8 @@ export async function POST(req: NextRequest) {
           option_d_rationale_en: question.option_d_rationale,
           test_taking_tip_en: question.test_taking_tip,
           cognitive_level: question.cognitive_level,
-          subtopic: question.subtopic || body.subtopic,
-          learning_objective: question.learning_objective || body.learningObjective,
+          subtopic: question.subtopic || effectiveSubtopic,
+          learning_objective: question.learning_objective || effectiveLearningObjective,
           source_topic: question.source_topic || question.topic,
           duplicate_hash: quality.duplicateHash,
           quality_score: quality.qualityScore,

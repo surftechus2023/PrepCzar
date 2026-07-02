@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const categoryId = searchParams.get('categoryId');
     const trackId = searchParams.get('trackId');
+    const topicId = searchParams.get('topicId');
     const supabaseAdmin = getSupabaseAdmin();
 
     const categoriesQuery = supabaseAdmin
@@ -36,13 +37,22 @@ export async function GET(req: NextRequest) {
           .order('display_order')
       : Promise.resolve({ data: [], error: null });
 
-    const [categoriesRes, tracksRes, topicsRes] = await Promise.all([
+    const subtopicsQuery = topicId
+      ? supabaseAdmin
+          .from('subtopics')
+          .select('*')
+          .eq('topic_id', topicId)
+          .order('display_order')
+      : Promise.resolve({ data: [], error: null });
+
+    const [categoriesRes, tracksRes, topicsRes, subtopicsRes] = await Promise.all([
       categoriesQuery,
       tracksQuery,
       topicsQuery,
+      subtopicsQuery,
     ]);
 
-    const error = categoriesRes.error || tracksRes.error || topicsRes.error;
+    const error = categoriesRes.error || tracksRes.error || topicsRes.error || subtopicsRes.error;
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
@@ -51,6 +61,7 @@ export async function GET(req: NextRequest) {
       categories: categoriesRes.data || [],
       tracks: tracksRes.data || [],
       topics: topicsRes.data || [],
+      subtopics: subtopicsRes.data || [],
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { authenticatedFetch } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import type { ExamCategory, ExamTrack, Topic } from '@/types/database';
+import type { ExamCategory, ExamTrack, Subtopic, Topic } from '@/types/database';
 
 interface GenerationResult {
   batchId: string;
@@ -25,9 +25,11 @@ export default function ContentGenerationPage() {
   const [categories, setCategories] = useState<ExamCategory[]>([]);
   const [tracks, setTracks] = useState<ExamTrack[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [subtopics, setSubtopics] = useState<Subtopic[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedTrack, setSelectedTrack] = useState('');
   const [selectedTopic, setSelectedTopic] = useState('');
+  const [selectedSubtopic, setSelectedSubtopic] = useState('');
   const [subtopic, setSubtopic] = useState('');
   const [learningObjective, setLearningObjective] = useState('');
   const [quantity, setQuantity] = useState(25);
@@ -53,10 +55,17 @@ export default function ContentGenerationPage() {
     loadOptions({ categoryId: selectedCategory, trackId: selectedTrack });
   }, [selectedTrack]);
 
-  async function loadOptions(params: { categoryId?: string; trackId?: string } = {}) {
+  useEffect(() => {
+    if (!selectedTopic) return;
+
+    loadOptions({ categoryId: selectedCategory, trackId: selectedTrack, topicId: selectedTopic });
+  }, [selectedTopic]);
+
+  async function loadOptions(params: { categoryId?: string; trackId?: string; topicId?: string } = {}) {
     const query = new URLSearchParams();
     if (params.categoryId) query.set('categoryId', params.categoryId);
     if (params.trackId) query.set('trackId', params.trackId);
+    if (params.topicId) query.set('topicId', params.topicId);
 
     const response = await authenticatedFetch(`/api/admin/generation-options?${query.toString()}`);
     const data = await response.json();
@@ -78,6 +87,13 @@ export default function ContentGenerationPage() {
     if (params.trackId) {
       setTopics(data.topics || []);
       setSelectedTopic('');
+      setSubtopics([]);
+      setSelectedSubtopic('');
+    }
+
+    if (params.topicId) {
+      setSubtopics(data.subtopics || []);
+      setSelectedSubtopic('');
     }
   }
 
@@ -104,6 +120,7 @@ export default function ContentGenerationPage() {
         body: JSON.stringify({
           examTrackId: selectedTrack,
           topicId: selectedTopic,
+          subtopicId: selectedSubtopic || null,
           subtopic,
           learningObjective,
           quantity,
@@ -170,6 +187,24 @@ export default function ContentGenerationPage() {
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="subtopic">Subtopic</Label>
+                {subtopics.length > 0 && (
+                  <select
+                    value={selectedSubtopic}
+                    onChange={(event) => {
+                      const subtopicId = event.target.value;
+                      const selected = subtopics.find((item) => item.id === subtopicId);
+                      setSelectedSubtopic(subtopicId);
+                      if (selected) {
+                        setSubtopic(selected.title);
+                        setLearningObjective(selected.learning_objective || learningObjective);
+                      }
+                    }}
+                    className="mb-2 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Use custom subtopic</option>
+                    {subtopics.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
+                  </select>
+                )}
                 <Input id="subtopic" value={subtopic} onChange={(event) => setSubtopic(event.target.value)} placeholder="Example: crisis intervention priorities" />
               </div>
               <div>

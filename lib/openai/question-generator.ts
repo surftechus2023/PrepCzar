@@ -45,10 +45,19 @@ export type GeneratedQuestion = z.infer<typeof generatedQuestionSchema>;
 export const questionGenerationInputSchema = z.object({
   examTrackId: z.string().uuid(),
   topicId: z.string().uuid(),
+  subtopicId: z.string().uuid().optional().nullable(),
   examTrackName: z.string().min(1),
+  officialSourceUrl: z.string().optional().nullable(),
+  officialExamDescription: z.string().optional().nullable(),
   topicTitle: z.string().min(1),
+  topicDescription: z.string().optional().nullable(),
+  topicOfficialBlueprintText: z.string().optional().nullable(),
+  topicWeightPercent: z.number().optional().nullable(),
   subtopic: z.string().min(2),
+  subtopicDescription: z.string().optional().nullable(),
+  subtopicOfficialBlueprintText: z.string().optional().nullable(),
   learningObjective: z.string().min(5),
+  blueprintReferenceText: z.string().optional().nullable(),
   quantity: z.number().int().min(1).max(25),
   difficultyMix: percentMixSchema,
   cognitiveLevelMix: percentMixSchema,
@@ -71,12 +80,21 @@ export async function generateQuestions(input: QuestionGenerationInput): Promise
 Exam track:
 - id: ${parsedInput.examTrackId}
 - name: ${parsedInput.examTrackName}
+- official source URL: ${parsedInput.officialSourceUrl || 'Not provided'}
+- official exam description: ${parsedInput.officialExamDescription || 'Not provided'}
 
 Topic:
 - id: ${parsedInput.topicId}
 - title: ${parsedInput.topicTitle}
+- description: ${parsedInput.topicDescription || 'Not provided'}
+- official blueprint text: ${parsedInput.topicOfficialBlueprintText || 'Not provided'}
+- official weight percent: ${parsedInput.topicWeightPercent ?? 'Not provided'}
+- subtopic id: ${parsedInput.subtopicId || 'Not provided'}
 - subtopic: ${parsedInput.subtopic}
+- subtopic description: ${parsedInput.subtopicDescription || 'Not provided'}
+- subtopic official blueprint text: ${parsedInput.subtopicOfficialBlueprintText || 'Not provided'}
 - learning objective: ${parsedInput.learningObjective}
+- blueprint reference text: ${parsedInput.blueprintReferenceText || parsedInput.subtopicOfficialBlueprintText || parsedInput.topicOfficialBlueprintText || 'Not provided'}
 
 Difficulty mix: ${formatMix(parsedInput.difficultyMix)}
 Cognitive level mix: ${formatMix(parsedInput.cognitiveLevelMix)}
@@ -86,6 +104,9 @@ Strict alignment and quality rules:
 - Do not reproduce copyrighted test-bank content.
 - Generate original educational practice questions only.
 - Directly align every question to the selected exam_track_id, topic_id, subtopic, and learning objective.
+- Use the provided official blueprint text and blueprint reference text as the source of truth.
+- Do not rely on general model memory for blueprint alignment.
+- Do not penalize or broaden the item to cover the entire exam domain; focus on the selected topic/subtopic/objective metadata.
 - Target blueprint_alignment_score must be 90 or higher.
 - Reject internally and regenerate any candidate that is weakly aligned, generic, or off-topic before returning it.
 - Match the exact selected exam track scope and expected reasoning level.

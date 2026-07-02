@@ -1,21 +1,25 @@
 # Question Generation and Integrity Workflow
 
-PrepCzar uses a stricter generated-question workflow:
+PrepCzar uses this generated-question workflow:
 
-`Strict Generation → Pre-Save Validation → Auto-Fix Weak Items → Human Review → Publish`
+`Official handbook/blueprint -> stored topic table -> generator uses it -> checker uses it -> reviewer sees it`
 
 This workflow is an automated pre-review quality-control layer. It does not replace professional psychometric validation or human subject-matter expert review.
 
 ## Strict Generation Rules
 
-The AI question generator is instructed to create only original, exam-track-specific MCQs aligned to:
+The AI question generator creates original, exam-track-specific MCQs aligned to:
 
 - selected `exam_track_id`
 - selected `topic_id`
+- selected `subtopic_id` when available
 - selected subtopic
 - selected learning objective
 - selected difficulty expectations
 - selected cognitive-level expectations
+- stored official blueprint text from `topics`, `subtopics`, and `questions.blueprint_reference_text`
+
+The generator receives stored Supabase metadata: official source URL, exam description, topic description, topic official blueprint text, subtopic official blueprint text, learning objective, and blueprint reference text.
 
 Generated items must not mix exam levels, such as BSW, MSW/LMSW, and LCSW, or NCLEX-RN and NCLEX-PN. Generic healthcare, social work, psychology, nursing, or counseling items are treated as weak items.
 
@@ -25,9 +29,14 @@ Each question receives a `blueprint_alignment_score`.
 
 - Target: `90+`
 - Below `90`: `integrity_status='needs_improvement'`
+- Missing blueprint metadata: `integrity_status='needs_metadata'`
 - Student visibility requires `blueprint_alignment_score >= 90`
 
-Alignment checks compare the question, answer choices, rationales, topic, subtopic, learning objective, source topic, and exam-track metadata.
+The checker judges alignment only against stored blueprint metadata. It does not rely only on model memory or general knowledge of the exam.
+
+If `topic.official_blueprint_text`, `subtopic.official_blueprint_text`, and `question.blueprint_reference_text` are all missing, the checker does not force a low alignment score. It sets `integrity_status='needs_metadata'` and adds: “Blueprint metadata was missing, so alignment could not be reliably scored.”
+
+Admins can update topic/subtopic blueprint text and rerun the integrity check.
 
 ## Difficulty Threshold
 
@@ -46,18 +55,19 @@ Each question receives an `integrity_score`.
 - Target: `85+`
 - `85+` with threshold scores met: `passed`
 - Below threshold: `needs_review` or `needs_improvement`
+- Missing metadata: `needs_metadata`
 - High plagiarism risk: `failed`
 - Bias/fairness flags route the item to review even if the numeric score is high
 
-The score considers item-writing quality, distractor quality, blueprint alignment, cognitive match, difficulty match, fairness, and originality risk.
+The score considers item-writing quality, distractor quality, stored-blueprint alignment, cognitive match, difficulty match, fairness, and originality risk.
 
 ## Auto-Improvement Flow
 
 During generation:
 
-1. AI generates a candidate question.
+1. AI generates a candidate question using stored blueprint metadata.
 2. The system runs pre-save integrity validation.
-3. If `blueprint_alignment_score < 90`, the AI is asked to improve alignment.
+3. If blueprint metadata exists and `blueprint_alignment_score < 90`, the AI is asked to improve alignment against the stored blueprint text.
 4. If `difficulty_quality_score < 80`, the AI is asked to improve professional difficulty.
 5. If `integrity_score < 85`, the AI is asked to improve the item once.
 6. The improved candidate is saved with `reviewed=false` and `active=false`.
@@ -65,7 +75,7 @@ During generation:
 During admin review:
 
 1. Admin clicks `Auto-Improve and Recheck`.
-2. The current question and flags are sent to the AI improver.
+2. The current question, flags, and stored blueprint metadata are sent to the AI improver.
 3. The rewritten item replaces the stored draft.
 4. `improvement_attempts` increments.
 5. `auto_improved=true` is recorded.
@@ -80,19 +90,20 @@ Auto-improvement is limited to 2 attempts per question. If the item still misses
 
 `Auto-Improve and Recheck` rewrites the question using AI, saves the improved draft, increments improvement metadata, and then reruns integrity scoring.
 
-## Human Review Requirement
+## Blueprint Metadata Storage
 
-Human review remains required before publishing. Admins can:
+Blueprint metadata is stored in:
 
-- approve
-- reject
-- edit manually
-- rerun integrity scoring
-- auto-improve and recheck
-- publish
-- record an override reason when publishing a non-passed item
+- `exam_tracks.official_source_url`
+- `exam_tracks.official_exam_description`
+- `topics.official_blueprint_text`
+- `topics.official_weight_percent`
+- `subtopics.official_blueprint_text`
+- `subtopics.learning_objective`
+- `questions.subtopic_id`
+- `questions.blueprint_reference_text`
 
-The automated workflow reduces review waste by improving weak items before review, but it does not certify professional, legal, clinical, or psychometric validity.
+The AI Question Review page includes “Blueprint context used for integrity check” so reviewers can see exactly what metadata was used when scoring alignment.
 
 ## Publishing Rules
 
@@ -125,4 +136,4 @@ Or:
 
 - `integrity_override=true`
 
-Generated, unchecked, weakly aligned, low-difficulty, or non-reviewed questions are kept out of student practice.
+Generated, unchecked, weakly aligned, low-difficulty, missing-metadata, or non-reviewed questions are kept out of student practice.

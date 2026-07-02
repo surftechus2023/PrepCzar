@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
         .single(),
       supabaseAdmin
         .from('topics')
-        .select('id, title, exam_track_id')
+        .select('id, title, official_blueprint_text, exam_track_id')
         .eq('id', parsedBody.topicId)
         .eq('exam_track_id', parsedBody.examTrackId)
         .single(),
@@ -112,6 +112,7 @@ export async function POST(req: NextRequest) {
         .map((q: any) => ({
           exam_track_id: parsedBody!.examTrackId,
           topic_id: parsedBody!.topicId,
+          blueprint_reference_text: topicRes.data.official_blueprint_text || null,
           question_en: localizedValue(q, 'question', 'en'),
           question_es: localizedValue(q, 'question', 'es'),
           question_fr: localizedValue(q, 'question', 'fr'),
@@ -143,9 +144,12 @@ export async function POST(req: NextRequest) {
         for (const question of inserted || []) {
           const checked = await checkAndUpdateQuestionIntegrity(supabaseAdmin, question.id);
           if (
-            checked.result.blueprint_alignment_score < 90
-            || checked.result.difficulty_quality_score < 80
-            || checked.result.integrity_score < 85
+            checked.result.integrity_status !== 'needs_metadata'
+            && (
+              checked.result.blueprint_alignment_score < 90
+              || checked.result.difficulty_quality_score < 80
+              || checked.result.integrity_score < 85
+            )
           ) {
             await autoImproveStoredQuestion(supabaseAdmin, question.id);
           }

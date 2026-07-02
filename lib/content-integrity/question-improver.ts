@@ -9,10 +9,19 @@ const MAX_IMPROVEMENT_ATTEMPTS = 2;
 interface ImprovementMetadata {
   examTrackId: string;
   topicId: string;
+  subtopicId?: string | null;
   examTrackName: string;
+  officialSourceUrl?: string | null;
+  officialExamDescription?: string | null;
   topicTitle: string;
+  topicDescription?: string | null;
+  topicOfficialBlueprintText?: string | null;
+  topicWeightPercent?: number | null;
   subtopic: string;
+  subtopicDescription?: string | null;
+  subtopicOfficialBlueprintText?: string | null;
   learningObjective: string;
+  blueprintReferenceText?: string | null;
 }
 
 interface ImproveGeneratedQuestionInput {
@@ -27,6 +36,8 @@ function asQuestion(question: GeneratedQuestion, metadata: ImprovementMetadata):
     exam_id: null,
     exam_track_id: metadata.examTrackId,
     topic_id: metadata.topicId,
+    subtopic_id: metadata.subtopicId || null,
+    blueprint_reference_text: metadata.blueprintReferenceText || metadata.subtopicOfficialBlueprintText || metadata.topicOfficialBlueprintText || null,
     difficulty: question.difficulty,
     question_en: question.question,
     question_es: '',
@@ -93,8 +104,27 @@ export function evaluateGeneratedQuestionIntegrity(
   existingQuestions: QuestionContext['existingQuestions'] = []
 ) {
   return evaluateQuestionIntegrity(asQuestion(question, metadata), {
-    examTrack: { id: metadata.examTrackId, name: metadata.examTrackName, full_name: metadata.examTrackName },
-    topic: { id: metadata.topicId, title: metadata.topicTitle },
+    examTrack: {
+      id: metadata.examTrackId,
+      name: metadata.examTrackName,
+      full_name: metadata.examTrackName,
+      official_source_url: metadata.officialSourceUrl,
+      official_exam_description: metadata.officialExamDescription,
+    },
+    topic: {
+      id: metadata.topicId,
+      title: metadata.topicTitle,
+      description: metadata.topicDescription,
+      official_blueprint_text: metadata.topicOfficialBlueprintText,
+      official_weight_percent: metadata.topicWeightPercent,
+    },
+    subtopic: metadata.subtopicId ? {
+      id: metadata.subtopicId,
+      title: metadata.subtopic,
+      description: metadata.subtopicDescription,
+      learning_objective: metadata.learningObjective,
+      official_blueprint_text: metadata.subtopicOfficialBlueprintText,
+    } : null,
     existingQuestions,
   });
 }
@@ -133,10 +163,19 @@ async function rewriteQuestion(input: ImproveGeneratedQuestionInput) {
 Preserve exactly:
 - Exam track id: ${metadata.examTrackId}
 - Exam track name/scope: ${metadata.examTrackName}
+- Official source URL: ${metadata.officialSourceUrl || 'Not provided'}
+- Exam description: ${metadata.officialExamDescription || 'Not provided'}
 - Topic id: ${metadata.topicId}
 - Topic: ${metadata.topicTitle}
+- Topic description: ${metadata.topicDescription || 'Not provided'}
+- Topic official blueprint text: ${metadata.topicOfficialBlueprintText || 'Not provided'}
+- Topic weight: ${metadata.topicWeightPercent ?? 'Not provided'}
+- Subtopic id: ${metadata.subtopicId || 'Not provided'}
 - Subtopic: ${metadata.subtopic}
+- Subtopic description: ${metadata.subtopicDescription || 'Not provided'}
+- Subtopic official blueprint text: ${metadata.subtopicOfficialBlueprintText || 'Not provided'}
 - Learning objective: ${metadata.learningObjective}
+- Blueprint reference text: ${metadata.blueprintReferenceText || 'Not provided'}
 - Intended difficulty: ${question.difficulty}
 - Intended cognitive level: ${question.cognitive_level}
 
@@ -154,7 +193,9 @@ ${JSON.stringify(question, null, 2)}
 
 Rewrite requirements:
 - Keep the same selected exam track, topic, subtopic, learning objective, intended cognitive level, and intended difficulty.
-- Make the item directly blueprint-aligned and exam-track-specific.
+- Judge and improve blueprint alignment only against the provided exam blueprint metadata, not general model knowledge.
+- If blueprint_alignment_score is below 90, rewrite the item to more directly test the provided learning objective and blueprint reference text.
+- Make the clinical/professional scenario clearly match the provided blueprint text.
 - Do not make it generic.
 - Do not switch topics.
 - Do not copy official exam content or copyrighted test-bank content.
@@ -245,15 +286,16 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
   const { checkAndUpdateQuestionIntegrity } = await import('@/lib/content-integrity/question-integrity-checker');
   const { data, error } = await supabaseAdmin
     .from('questions')
-    .select('*, exam_track:exam_tracks(id, name, full_name, slug), topic:topics(id, title, description)')
+    .select('*, exam_track:exam_tracks(id, name, full_name, slug, official_source_url, official_exam_description), topic:topics(id, title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(id, title, description, learning_objective, official_blueprint_text)')
     .eq('id', questionId)
     .single();
 
   if (error || !data) throw new Error(error?.message || 'Question not found.');
 
   const question = data as Question & {
-    exam_track?: { id: string; name: string | null; full_name?: string | null };
-    topic?: { id: string; title: string | null };
+    exam_track?: NonNullable<QuestionContext['examTrack']>;
+    topic?: NonNullable<QuestionContext['topic']>;
+    subtopic_record?: QuestionContext['subtopic'];
   };
 
   const attempts = question.improvement_attempts || 0;
@@ -268,16 +310,30 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
   const currentIntegrity = evaluateQuestionIntegrity(question, {
     examTrack: question.exam_track,
     topic: question.topic,
+    subtopic: question.subtopic_record,
     existingQuestions: [],
   });
+
+  if (currentIntegrity.integrity_status === 'needs_metadata') {
+    throw new Error('Blueprint metadata is missing. Add topic/subtopic official blueprint text or question blueprint reference text, then rerun integrity check.');
+  }
 
   const metadata: ImprovementMetadata = {
     examTrackId: question.exam_track_id || '',
     topicId: question.topic_id || '',
+    subtopicId: question.subtopic_id,
     examTrackName: question.exam_track?.full_name || question.exam_track?.name || 'Selected exam track',
+    officialSourceUrl: question.exam_track?.official_source_url,
+    officialExamDescription: question.exam_track?.official_exam_description,
     topicTitle: question.topic?.title || question.source_topic || 'Selected topic',
-    subtopic: firstText(question.subtopic, question.topic?.title, question.source_topic, 'Selected subtopic'),
-    learningObjective: firstText(question.learning_objective, question.topic?.title ? `Apply ${question.topic.title} to the selected exam track.` : null, 'Apply the selected topic to the selected exam track.'),
+    topicDescription: question.topic?.description,
+    topicOfficialBlueprintText: question.topic?.official_blueprint_text,
+    topicWeightPercent: question.topic?.official_weight_percent,
+    subtopic: firstText(question.subtopic_record?.title, question.subtopic, question.topic?.title, question.source_topic, 'Selected subtopic'),
+    subtopicDescription: question.subtopic_record?.description,
+    subtopicOfficialBlueprintText: question.subtopic_record?.official_blueprint_text,
+    learningObjective: firstText(question.learning_objective, question.subtopic_record?.learning_objective, question.topic?.title ? `Apply ${question.topic.title} to the selected exam track.` : null, 'Apply the selected topic to the selected exam track.'),
+    blueprintReferenceText: firstText(question.blueprint_reference_text, question.subtopic_record?.official_blueprint_text, question.topic?.official_blueprint_text),
   };
 
   const improved = await improveGeneratedQuestionOnce({
@@ -312,8 +368,10 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
       difficulty: improved.question.difficulty,
       cognitive_level: improved.question.cognitive_level,
       subtopic: improved.question.subtopic || metadata.subtopic,
+      subtopic_id: metadata.subtopicId || null,
       learning_objective: improved.question.learning_objective || metadata.learningObjective,
       source_topic: improved.question.source_topic || improved.question.topic,
+      blueprint_reference_text: metadata.blueprintReferenceText || metadata.subtopicOfficialBlueprintText || metadata.topicOfficialBlueprintText || null,
       improvement_attempts: nextAttempts,
       auto_improved: true,
       improvement_notes: improvementNotes,

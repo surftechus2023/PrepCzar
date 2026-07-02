@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Question } from '@/types/database';
 
-export type IntegrityStatus = 'pending' | 'passed' | 'needs_review' | 'needs_improvement' | 'needs_human_review' | 'failed';
+export type IntegrityStatus = 'pending' | 'passed' | 'needs_review' | 'needs_improvement' | 'needs_human_review' | 'needs_metadata' | 'failed';
 type CognitiveLevel =
   | 'recall'
   | 'comprehension'
@@ -14,8 +14,28 @@ type CognitiveLevel =
   | 'prioritization';
 
 export interface QuestionContext {
-  examTrack?: { id: string; name: string | null; full_name?: string | null; slug?: string | null } | null;
-  topic?: { id: string; title: string | null; description?: string | null } | null;
+  examTrack?: {
+    id: string;
+    name: string | null;
+    full_name?: string | null;
+    slug?: string | null;
+    official_source_url?: string | null;
+    official_exam_description?: string | null;
+  } | null;
+  topic?: {
+    id: string;
+    title: string | null;
+    description?: string | null;
+    official_blueprint_text?: string | null;
+    official_weight_percent?: number | null;
+  } | null;
+  subtopic?: {
+    id: string;
+    title: string | null;
+    description?: string | null;
+    learning_objective?: string | null;
+    official_blueprint_text?: string | null;
+  } | null;
   existingQuestions?: Array<{ id: string; question_en: string | null; duplicate_hash: string | null }>;
 }
 
@@ -34,12 +54,30 @@ export interface QuestionIntegrityResult {
   duplicate_hash: string;
 }
 
+export function getBlueprintReferenceText(question: Question, context: QuestionContext = {}) {
+  return [
+    context.topic?.official_blueprint_text,
+    context.subtopic?.official_blueprint_text,
+    context.subtopic?.learning_objective,
+    question.blueprint_reference_text,
+  ].filter((value) => typeof value === 'string' && value.trim()).join('\n\n');
+}
+
 const ABSOLUTE_TERMS = /\b(always|never|only|must|all|none|every|completely|totally|guaranteed)\b/i;
 const DOUBLE_NEGATIVE = /\b(no|not|never|none|without)\b.{0,45}\b(no|not|never|none|without|except|unless)\b/i;
 const VAGUE_WORDING = /\b(generally|usually|often|sometimes|may|might|could|somewhat|probably|best thing|appropriate thing)\b/i;
 const DEMOGRAPHIC_REFERENCES = /\b(race|racial|ethnic|ethnicity|religion|religious|nationality|immigrant|disabled|disability|elderly|young woman|young man|gender|male|female|poor|wealthy|low-income)\b/i;
 const STEREOTYPE_OR_IDIOM = /\b(you guys|crazy|insane|addict|clean and sober|pull yourself up|third world|illegal alien|normal person)\b/i;
 const CLINICAL_CONTEXT = /\b(client|patient|student|family|caregiver|case|therapy|assessment|diagnosis|treatment|intervention|symptom|school|hospital|clinic|nurse|social worker)\b/i;
+
+export const BLUEPRINT_ALIGNMENT_SCORING_INSTRUCTIONS = `You are not judging blueprint alignment from general knowledge.
+You must judge alignment only against the provided exam blueprint metadata.
+Score 90-100 when the question directly tests the supplied blueprint objective with clear exam-track relevance.
+Score 80-89 when aligned but could be more specific.
+Score 70-79 when related but weak or generic.
+Score below 70 when off-topic or insufficiently aligned.
+Do not penalize the question for not covering the entire exam domain.
+Only judge whether it aligns with the selected blueprint/topic/subtopic metadata.`;
 
 function normalizeText(value: string | null | undefined) {
   return (value || '')
@@ -169,11 +207,18 @@ function evaluateBlueprintAlignment(question: Question, context: QuestionContext
     question.correct_rationale_en,
   ].join(' ');
   const questionNormalized = normalizeText(questionText);
+  const officialBlueprintText = getBlueprintReferenceText(question, context);
+  const hasReliableBlueprintMetadata = normalizeText(officialBlueprintText).length > 0;
+  if (!hasReliableBlueprintMetadata) {
+    return { score: 0, hasReliableBlueprintMetadata };
+  }
+
   const scoreParts = [
-    { text: `${context.topic?.title || ''} ${context.topic?.description || ''}`, weight: 30 },
-    { text: question.subtopic || '', weight: 25 },
-    { text: question.learning_objective || '', weight: 35 },
-    { text: `${context.examTrack?.name || ''} ${context.examTrack?.full_name || ''} ${question.source_topic || ''}`, weight: 10 },
+    { text: officialBlueprintText, weight: 45 },
+    { text: context.subtopic?.title || question.subtopic || '', weight: 15 },
+    { text: context.subtopic?.description || '', weight: 10 },
+    { text: context.subtopic?.learning_objective || question.learning_objective || '', weight: 20 },
+    { text: `${context.topic?.title || ''} ${context.topic?.description || ''}`, weight: 10 },
   ];
 
   let availableWeight = 0;
@@ -187,8 +232,11 @@ function evaluateBlueprintAlignment(question: Question, context: QuestionContext
     score += Math.min(1, matched / Math.min(tokens.length, 4)) * part.weight;
   });
 
-  if (!availableWeight) return 75;
-  return Math.round(Math.max(35, Math.min(100, (score / availableWeight) * 100)));
+  if (!availableWeight) return { score: 0, hasReliableBlueprintMetadata: false };
+  return {
+    score: Math.round(Math.max(35, Math.min(100, (score / availableWeight) * 100))),
+    hasReliableBlueprintMetadata,
+  };
 }
 
 function detectCognitiveLevel(question: Question): CognitiveLevel {
@@ -279,7 +327,8 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
   const duplicateHash = createQuestionDuplicateHash(question.question_en, question.exam_track_id);
   const qualityFlags = evaluateQuality(question);
   const distractorFlags = evaluateDistractors(question);
-  const blueprintAlignmentScore = evaluateBlueprintAlignment(question, context);
+  const blueprintAlignment = evaluateBlueprintAlignment(question, context);
+  const blueprintAlignmentScore = blueprintAlignment.score;
   const cognitiveLevelDetected = detectCognitiveLevel(question);
   const predictedDifficulty = predictDifficulty(question, cognitiveLevelDetected);
   const difficultyQualityScore = evaluateDifficultyQuality(question, context, cognitiveLevelDetected, predictedDifficulty);
@@ -287,7 +336,11 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
   const plagiarismRiskScore = evaluatePlagiarismRisk(question, context, duplicateHash);
   const notes: string[] = [];
 
-  if (blueprintAlignmentScore < 90) notes.push('Question is below the 90+ blueprint alignment target and should be improved before human review.');
+  if (!blueprintAlignment.hasReliableBlueprintMetadata) {
+    notes.push('Blueprint metadata was missing, so alignment could not be reliably scored.');
+  } else if (blueprintAlignmentScore < 90) {
+    notes.push('Question is below the 90+ blueprint alignment target and should be improved before human review.');
+  }
   if (difficultyQualityScore < 80) notes.push('Question is below the 80+ professional difficulty quality target and should be improved.');
   if (!cognitiveLevelMatches(question, cognitiveLevelDetected)) notes.push('Detected cognitive level does not clearly match the intended cognitive level.');
   if (isTooLowForTrack(question, context, cognitiveLevelDetected)) notes.push('Question may be too low-level for this exam track.');
@@ -306,7 +359,8 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
 
   let status: IntegrityStatus = 'passed';
 
-  if (plagiarismRiskScore > 70) status = 'failed';
+  if (!blueprintAlignment.hasReliableBlueprintMetadata) status = 'needs_metadata';
+  else if (plagiarismRiskScore > 70) status = 'failed';
   else if (blueprintAlignmentScore < 90 || difficultyQualityScore < 80) status = 'needs_improvement';
   else if (integrityScore < 75) status = 'needs_improvement';
   else if (integrityScore < 85) status = 'needs_review';
@@ -331,7 +385,7 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
 export async function checkAndUpdateQuestionIntegrity(supabaseAdmin: SupabaseClient, questionId: string) {
   const { data: question, error: questionError } = await supabaseAdmin
     .from('questions')
-    .select('*, exam_track:exam_tracks(id, name, full_name, slug), topic:topics(id, title, description)')
+    .select('*, exam_track:exam_tracks(id, name, full_name, slug, official_source_url, official_exam_description), topic:topics(id, title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(id, title, description, learning_objective, official_blueprint_text)')
     .eq('id', questionId)
     .single();
 
@@ -342,6 +396,7 @@ export async function checkAndUpdateQuestionIntegrity(supabaseAdmin: SupabaseCli
   const typedQuestion = question as Question & {
     exam_track?: QuestionContext['examTrack'];
     topic?: QuestionContext['topic'];
+    subtopic_record?: QuestionContext['subtopic'];
   };
 
   const { data: existing, error: existingError } = await supabaseAdmin
@@ -355,6 +410,7 @@ export async function checkAndUpdateQuestionIntegrity(supabaseAdmin: SupabaseCli
   const result = evaluateQuestionIntegrity(typedQuestion, {
     examTrack: typedQuestion.exam_track,
     topic: typedQuestion.topic,
+    subtopic: typedQuestion.subtopic_record,
     existingQuestions: (existing || []) as QuestionContext['existingQuestions'],
   });
 
@@ -376,7 +432,7 @@ export async function checkAndUpdateQuestionIntegrity(supabaseAdmin: SupabaseCli
       duplicate_hash: typedQuestion.duplicate_hash || result.duplicate_hash,
     })
     .eq('id', questionId)
-    .select('*, exam_track:exam_tracks(name, slug), topic:topics(title)')
+    .select('*, exam_track:exam_tracks(name, slug, official_source_url, official_exam_description), topic:topics(title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(title, description, learning_objective, official_blueprint_text)')
     .single();
 
   if (updateError) throw new Error(updateError.message);
