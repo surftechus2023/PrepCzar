@@ -334,12 +334,18 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
       question.subtopic_record?.official_blueprint_text,
       question.topic?.official_blueprint_text,
       question.learning_objective,
-      question.subtopic_record?.learning_objective
+      question.subtopic_record?.learning_objective,
+      question.subtopic_record?.description,
+      question.subtopic_record?.title,
+      question.topic?.description,
+      question.topic?.title,
+      question.subtopic,
+      question.source_topic
     ),
   };
 
   if (!metadata.blueprintReferenceText) {
-    throw new Error('Blueprint metadata is missing. Add a learning objective, topic/subtopic official blueprint text, or question blueprint reference text, then rerun integrity check.');
+    throw new Error('Blueprint metadata is missing. Add question blueprint reference text, learning objective, subtopic, source topic, topic description, or topic/subtopic official blueprint text, then rerun integrity check.');
   }
 
   const improved = await improveGeneratedQuestionOnce({

@@ -61,6 +61,12 @@ export function getBlueprintReferenceText(question: Question, context: QuestionC
     context.subtopic?.learning_objective,
     question.blueprint_reference_text,
     question.learning_objective,
+    context.subtopic?.description,
+    context.subtopic?.title,
+    context.topic?.description,
+    context.topic?.title,
+    question.subtopic,
+    question.source_topic,
   ].filter((value) => typeof value === 'string' && value.trim()).join('\n\n');
 }
 
