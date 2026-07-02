@@ -344,6 +344,7 @@ export interface Database {
           id: string;
           exam_id: string | null;
           exam_track_id: string | null;
+          exam_name: string | null;
           topic_id: string | null;
           front_en: string;
           front_es: string;
@@ -359,6 +360,7 @@ export interface Database {
           id?: string;
           exam_id?: string | null;
           exam_track_id?: string | null;
+          exam_name?: string | null;
           topic_id?: string | null;
           front_en?: string;
           front_es?: string;
@@ -373,6 +375,7 @@ export interface Database {
           id?: string;
           exam_id?: string | null;
           exam_track_id?: string | null;
+          exam_name?: string | null;
           topic_id?: string | null;
           front_en?: string;
           front_es?: string;
@@ -389,6 +392,7 @@ export interface Database {
           id: string;
           exam_id: string | null;
           exam_track_id: string | null;
+          exam_name: string | null;
           topic_id: string | null;
           case_en: string;
           case_es: string;
@@ -410,6 +414,7 @@ export interface Database {
           id?: string;
           exam_id?: string | null;
           exam_track_id?: string | null;
+          exam_name?: string | null;
           topic_id?: string | null;
           case_en?: string;
           case_es?: string;
@@ -430,6 +435,7 @@ export interface Database {
           id?: string;
           exam_id?: string | null;
           exam_track_id?: string | null;
+          exam_name?: string | null;
           topic_id?: string | null;
           case_en?: string;
           case_es?: string;
@@ -603,6 +609,7 @@ export interface Database {
           id: string;
           admin_user_id: string | null;
           exam_track_id: string | null;
+          exam_name: string | null;
           topic_id: string | null;
           content_type: 'mcq' | 'flashcards' | 'vignettes';
           requested_count: number;
@@ -616,6 +623,7 @@ export interface Database {
           id?: string;
           admin_user_id?: string | null;
           exam_track_id?: string | null;
+          exam_name?: string | null;
           topic_id?: string | null;
           content_type: 'mcq' | 'flashcards' | 'vignettes';
           requested_count: number;
@@ -629,6 +637,7 @@ export interface Database {
           id?: string;
           admin_user_id?: string | null;
           exam_track_id?: string | null;
+          exam_name?: string | null;
           topic_id?: string | null;
           content_type?: 'mcq' | 'flashcards' | 'vignettes';
           requested_count?: number;

@@ -62,6 +62,11 @@ export default function DashboardPage() {
     : 0;
 
   const incompleteSessions = recentSessions.filter(s => !s.completed);
+  const practiceRouteByMode: Record<PracticeSession['mode'], string> = {
+    mcq: 'mcq',
+    flashcard: 'flashcards',
+    vignette: 'vignettes',
+  };
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -237,7 +242,7 @@ export default function DashboardPage() {
                     )}
                     {!session.completed && (
                       <Button size="sm" variant="ghost" asChild className="ml-2 flex-shrink-0">
-                        <Link href={`/dashboard/practice/${session.mode}?session=${session.id}`}>
+                        <Link href={`/dashboard/practice/${practiceRouteByMode[session.mode]}?session=${session.id}`}>
                           <ArrowRight className="w-3 h-3" />
                         </Link>
                       </Button>

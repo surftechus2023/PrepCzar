@@ -86,6 +86,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Exam track or topic not found.' }, { status: 404 });
     }
 
+    const examName = trackRes.data.full_name || trackRes.data.name;
+
     const { data: batch, error: batchError } = await supabaseAdmin
       .from('ai_generation_batches')
       .insert({
@@ -131,7 +133,7 @@ export async function POST(req: NextRequest) {
       const generated = await generateQuestions({
         examTrackId: body.examTrackId,
         topicId: body.topicId,
-        examTrackName: trackRes.data.full_name || trackRes.data.name,
+        examTrackName: examName,
         topicTitle: topicRes.data.title,
         subtopic: body.subtopic,
         learningObjective: body.learningObjective,
@@ -253,6 +255,7 @@ export async function POST(req: NextRequest) {
       await supabaseAdmin.from('generation_logs').insert({
         admin_user_id: adminUser.id,
         exam_track_id: body.examTrackId,
+        exam_name: examName,
         topic_id: body.topicId,
         content_type: 'mcq',
         requested_count: body.quantity,

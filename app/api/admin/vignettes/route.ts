@@ -3,6 +3,34 @@ import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
 
 export const dynamic = 'force-dynamic';
 
+async function enrichWithExamName(
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
+  id: string,
+  values: Record<string, any>
+) {
+  const nextValues = { ...values };
+  if (nextValues.exam_name) return nextValues;
+
+  const { data: vignette } = await supabaseAdmin
+    .from('case_vignettes')
+    .select('exam_track_id, exam_name')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (vignette?.exam_name || !vignette?.exam_track_id) return nextValues;
+
+  const { data: track } = await supabaseAdmin
+    .from('exam_tracks')
+    .select('name, full_name')
+    .eq('id', vignette.exam_track_id)
+    .maybeSingle();
+
+  const examName = track ? track.full_name || track.name : '';
+  if (examName) nextValues.exam_name = examName;
+
+  return nextValues;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const adminUser = await requireAdmin(req);
@@ -46,9 +74,12 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid update request' }, { status: 400 });
     }
 
-    const { data, error } = await getSupabaseAdmin()
+    const supabaseAdmin = getSupabaseAdmin();
+    const updateValues = await enrichWithExamName(supabaseAdmin, id, values);
+
+    const { data, error } = await supabaseAdmin
       .from('case_vignettes')
-      .update(values)
+      .update(updateValues)
       .eq('id', id)
       .select('*, exam_track:exam_tracks(name)')
       .single();

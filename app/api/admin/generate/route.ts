@@ -38,6 +38,7 @@ function normalizeCorrectOption(value: unknown) {
 export async function POST(req: NextRequest) {
   let parsedBody: z.infer<typeof generateSchema> | null = null;
   let adminUserId: string | null = null;
+  let examName = '';
 
   try {
     const adminUser = await requireAdmin(req);
@@ -80,6 +81,7 @@ export async function POST(req: NextRequest) {
     }
 
     const trackName = trackRes.data.full_name || trackRes.data.name;
+    examName = trackName;
     const topicTitle = topicRes.data.title;
     const { generateMCQs, generateFlashcards, generateVignettes } = await import('@/lib/openai');
 
@@ -157,6 +159,7 @@ export async function POST(req: NextRequest) {
         })
         .map((f: any) => ({
           exam_track_id: parsedBody!.examTrackId,
+          exam_name: examName,
           topic_id: parsedBody!.topicId,
           front_en: localizedValue(f, 'front', 'en', f.question, f.term),
           front_es: localizedValue(f, 'front', 'es'),
@@ -193,6 +196,7 @@ export async function POST(req: NextRequest) {
         })
         .map((v: any) => ({
           exam_track_id: parsedBody!.examTrackId,
+          exam_name: examName,
           topic_id: parsedBody!.topicId,
           case_en: localizedValue(v, 'case', 'en', v.scenario, v.vignette),
           case_es: localizedValue(v, 'case', 'es'),
@@ -219,6 +223,7 @@ export async function POST(req: NextRequest) {
     await supabaseAdmin.from('generation_logs').insert({
       admin_user_id: adminUserId,
       exam_track_id: parsedBody.examTrackId,
+      exam_name: examName,
       topic_id: parsedBody.topicId,
       content_type: parsedBody.type,
       requested_count: parsedBody.count,
@@ -235,6 +240,7 @@ export async function POST(req: NextRequest) {
         await getSupabaseAdmin().from('generation_logs').insert({
           admin_user_id: adminUserId,
           exam_track_id: parsedBody.examTrackId,
+          exam_name: examName,
           topic_id: parsedBody.topicId,
           content_type: parsedBody.type,
           requested_count: parsedBody.count,

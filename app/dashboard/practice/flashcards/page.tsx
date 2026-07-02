@@ -44,6 +44,7 @@ function FlashcardsContent() {
   const [known, setKnown] = useState<Set<string>>(new Set());
   const [unknown, setUnknown] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [completed, setCompleted] = useState(false);
   const [lang, setLang] = useState<'en' | 'es' | 'fr'>('en');
   const [session, setSession] = useState<PracticeSession | null>(null);
@@ -57,22 +58,38 @@ function FlashcardsContent() {
   }, [profile]);
 
   const loadData = useCallback(async () => {
-    if (!examId || !profile) {
+    if (!profile) {
       setLoading(false);
       return;
     }
 
-    const allowed = await hasActiveTrackAccess(profile.id, examId);
+    let targetExamId = examId;
+    if (!targetExamId) {
+      const accessRes = await authenticatedFetch('/api/dashboard/access');
+      const accessJson = await accessRes.json();
+      targetExamId = accessJson.access?.[0]?.exam_track_id || null;
+
+      if (targetExamId) {
+        router.replace(`/dashboard/practice/flashcards?exam=${targetExamId}`);
+        return;
+      }
+
+      setLoading(false);
+      return;
+    }
+
+    const allowed = await hasActiveTrackAccess(profile.id, targetExamId);
     if (!allowed) {
       router.push('/dashboard/subscriptions');
       return;
     }
 
-    const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=flashcards&exam=${examId}`);
+    const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=flashcards&exam=${targetExamId}`);
     const contentJson = await contentRes.json();
 
     if (!contentRes.ok) {
-      router.push('/dashboard/subscriptions');
+      setLoadError(contentJson.error || 'Could not load flashcards.');
+      setLoading(false);
       return;
     }
 
@@ -80,23 +97,27 @@ function FlashcardsContent() {
       setExam({ id: contentJson.track.id, name: contentJson.track.name } as any);
     }
 
+    setLoading(false);
+
     if (contentJson.content?.length > 0) {
       setFlashcards([...contentJson.content].sort(() => Math.random() - 0.5));
+
+      try {
+        const sessionRes = await authenticatedFetch('/api/dashboard/practice-session', {
+          method: 'POST',
+          body: JSON.stringify({ examTrackId: targetExamId, mode: 'flashcard' }),
+        });
+        const sessionJson = await sessionRes.json();
+        if (sessionRes.ok) setSession(sessionJson.session);
+      } catch (err) {
+        console.error('Could not create flashcard session:', err);
+      }
     }
-
-    const sessionRes = await authenticatedFetch('/api/dashboard/practice-session', {
-      method: 'POST',
-      body: JSON.stringify({ examTrackId: examId, mode: 'flashcard' }),
-    });
-    const sessionJson = await sessionRes.json();
-    if (sessionRes.ok) setSession(sessionJson.session);
-
-    setLoading(false);
   }, [examId, profile, router]);
 
   useEffect(() => {
-    if (profile && examId) loadData();
-  }, [loadData, profile, examId]);
+    if (profile) loadData();
+  }, [loadData, profile]);
 
   const currentCard = flashcards[currentIdx];
 
@@ -172,6 +193,16 @@ function FlashcardsContent() {
     return (
       <div className="flex items-center justify-center py-24">
         <RefreshCw className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto text-center py-24">
+        <h2 className="text-2xl font-bold mb-4">Could Not Load Flashcards</h2>
+        <p className="text-muted-foreground mb-6">{loadError}</p>
+        <Button asChild><Link href="/dashboard">Back to Dashboard</Link></Button>
       </div>
     );
   }

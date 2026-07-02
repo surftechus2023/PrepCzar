@@ -58,14 +58,19 @@ export default function AdminFlashcardsPage() {
     return data.flashcard as FlashcardWithMeta;
   }
 
+  function applyUpdatedCard(updated: FlashcardWithMeta) {
+    setCards(current => current.map(c => c.id === updated.id ? updated : c));
+    setSelected(current => current?.id === updated.id ? updated : current);
+  }
+
   async function toggleActive(card: FlashcardWithMeta) {
     const updated = await updateCard(card.id, { active: !card.active });
-    if (updated) setCards(cards.map(c => c.id === card.id ? updated : c));
+    if (updated) applyUpdatedCard(updated);
   }
 
   async function toggleReviewed(card: FlashcardWithMeta) {
     const updated = await updateCard(card.id, { reviewed: !card.reviewed });
-    if (updated) setCards(cards.map(c => c.id === card.id ? updated : c));
+    if (updated) applyUpdatedCard(updated);
   }
 
   async function deleteCard(id: string) {
@@ -118,14 +123,14 @@ export default function AdminFlashcardsPage() {
                 <div className="flex items-start gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap gap-2 mb-2">
-                      <Badge variant="secondary" className="text-xs">{(card.exam_track as any)?.name || 'Unknown'}</Badge>
+                      <Badge variant="secondary" className="text-xs">{(card.exam_track as any)?.name || card.exam_name || 'Unknown'}</Badge>
                       {card.reviewed ? (
                         <Badge className="text-xs bg-emerald-100 text-emerald-700 border-emerald-300">Reviewed</Badge>
                       ) : (
                         <Badge className="text-xs bg-amber-100 text-amber-700 border-amber-300">Pending Review</Badge>
                       )}
                       {card.active ? (
-                        <Badge className="text-xs bg-blue-100 text-blue-700 border-blue-300">Active</Badge>
+                        <Badge className="text-xs bg-emerald-600 text-white border-emerald-700">Active</Badge>
                       ) : (
                         <Badge variant="secondary" className="text-xs">Inactive</Badge>
                       )}
@@ -137,11 +142,23 @@ export default function AdminFlashcardsPage() {
                     <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => setSelected(card)}>
                       <Eye className="w-3.5 h-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => toggleActive(card)}>
-                      {card.active ? <XCircle className="w-3.5 h-3.5 text-amber-500" /> : <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />}
+                    <Button
+                      variant={card.active ? 'default' : 'outline'}
+                      size="sm"
+                      className={card.active ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700' : ''}
+                      onClick={() => toggleActive(card)}
+                    >
+                      {card.active ? <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> : <XCircle className="w-3.5 h-3.5 mr-1.5 text-amber-500" />}
+                      {card.active ? 'Active' : 'Activate'}
                     </Button>
-                    <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => toggleReviewed(card)}>
-                      {card.reviewed ? <XCircle className="w-3.5 h-3.5 text-amber-500" /> : <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />}
+                    <Button
+                      variant={card.reviewed ? 'default' : 'outline'}
+                      size="sm"
+                      className={card.reviewed ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700' : ''}
+                      onClick={() => toggleReviewed(card)}
+                    >
+                      {card.reviewed ? <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> : <XCircle className="w-3.5 h-3.5 mr-1.5 text-amber-500" />}
+                      {card.reviewed ? 'Reviewed' : 'Review'}
                     </Button>
                     <Button variant="ghost" size="icon" className="w-8 h-8 text-destructive" onClick={() => deleteCard(card.id)}>
                       <Trash2 className="w-3.5 h-3.5" />
@@ -167,10 +184,18 @@ export default function AdminFlashcardsPage() {
                 <p className="text-xs text-muted-foreground uppercase mb-1">Back (EN)</p>
                 <p className="text-foreground">{selected.back_en}</p>
               </div>
-              <Button onClick={() => toggleActive(selected)} className="w-full">
+              <Button
+                onClick={() => toggleActive(selected)}
+                className={`w-full ${selected.active ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+                variant={selected.active ? 'default' : 'outline'}
+              >
                 {selected.active ? 'Deactivate' : 'Activate'}
               </Button>
-              <Button onClick={() => toggleReviewed(selected)} variant="outline" className="w-full">
+              <Button
+                onClick={() => toggleReviewed(selected)}
+                variant={selected.reviewed ? 'default' : 'outline'}
+                className={`w-full ${selected.reviewed ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+              >
                 {selected.reviewed ? 'Mark Unreviewed' : 'Mark Reviewed'}
               </Button>
             </div>

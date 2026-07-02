@@ -69,6 +69,7 @@ export async function GET(req: NextRequest) {
       .select('*')
       .eq('exam_track_id', examTrackId)
       .eq('active', true)
+      .eq('reviewed', true)
       .limit(LIMIT_BY_TYPE[contentType]);
 
     if (contentError) {

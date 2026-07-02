@@ -56,14 +56,19 @@ export default function AdminVignettesPage() {
     return data.vignette as VignetteWithMeta;
   }
 
+  function applyUpdatedVignette(updated: VignetteWithMeta) {
+    setVignettes(current => current.map(item => item.id === updated.id ? updated : item));
+    setSelected(current => current?.id === updated.id ? updated : current);
+  }
+
   async function toggleActive(v: VignetteWithMeta) {
     const updated = await updateVignette(v.id, { active: !v.active });
-    if (updated) setVignettes(vignettes.map(item => item.id === v.id ? updated : item));
+    if (updated) applyUpdatedVignette(updated);
   }
 
   async function toggleReviewed(v: VignetteWithMeta) {
     const updated = await updateVignette(v.id, { reviewed: !v.reviewed });
-    if (updated) setVignettes(vignettes.map(item => item.id === v.id ? updated : item));
+    if (updated) applyUpdatedVignette(updated);
   }
 
   async function deleteVignette(id: string) {
@@ -114,14 +119,14 @@ export default function AdminVignettesPage() {
                 <div className="flex items-start gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap gap-2 mb-2">
-                      <Badge variant="secondary" className="text-xs">{(v.exam_track as any)?.name || 'Unknown'}</Badge>
+                      <Badge variant="secondary" className="text-xs">{(v.exam_track as any)?.name || v.exam_name || 'Unknown'}</Badge>
                       {v.reviewed ? (
                         <Badge className="text-xs bg-emerald-100 text-emerald-700 border-emerald-300">Reviewed</Badge>
                       ) : (
                         <Badge className="text-xs bg-amber-100 text-amber-700 border-amber-300">Pending Review</Badge>
                       )}
                       {v.active ? (
-                        <Badge className="text-xs bg-blue-100 text-blue-700 border-blue-300">Active</Badge>
+                        <Badge className="text-xs bg-emerald-600 text-white border-emerald-700">Active</Badge>
                       ) : (
                         <Badge variant="secondary" className="text-xs">Inactive</Badge>
                       )}
@@ -132,11 +137,23 @@ export default function AdminVignettesPage() {
                     <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => setSelected(v)}>
                       <Eye className="w-3.5 h-3.5" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => toggleActive(v)}>
-                      {v.active ? <XCircle className="w-3.5 h-3.5 text-amber-500" /> : <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />}
+                    <Button
+                      variant={v.active ? 'default' : 'outline'}
+                      size="sm"
+                      className={v.active ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700' : ''}
+                      onClick={() => toggleActive(v)}
+                    >
+                      {v.active ? <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> : <XCircle className="w-3.5 h-3.5 mr-1.5 text-amber-500" />}
+                      {v.active ? 'Active' : 'Activate'}
                     </Button>
-                    <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => toggleReviewed(v)}>
-                      {v.reviewed ? <XCircle className="w-3.5 h-3.5 text-amber-500" /> : <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />}
+                    <Button
+                      variant={v.reviewed ? 'default' : 'outline'}
+                      size="sm"
+                      className={v.reviewed ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-700' : ''}
+                      onClick={() => toggleReviewed(v)}
+                    >
+                      {v.reviewed ? <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> : <XCircle className="w-3.5 h-3.5 mr-1.5 text-amber-500" />}
+                      {v.reviewed ? 'Reviewed' : 'Review'}
                     </Button>
                     <Button variant="ghost" size="icon" className="w-8 h-8 text-destructive" onClick={() => deleteVignette(v.id)}>
                       <Trash2 className="w-3.5 h-3.5" />
@@ -170,10 +187,18 @@ export default function AdminVignettesPage() {
                 <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Coaching Feedback</p>
                 <p className="text-sm text-muted-foreground">{selected.coaching_feedback_en}</p>
               </div>
-              <Button onClick={() => toggleActive(selected)} className="w-full">
+              <Button
+                onClick={() => toggleActive(selected)}
+                variant={selected.active ? 'default' : 'outline'}
+                className={`w-full ${selected.active ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+              >
                 {selected.active ? 'Deactivate' : 'Activate'}
               </Button>
-              <Button onClick={() => toggleReviewed(selected)} variant="outline" className="w-full">
+              <Button
+                onClick={() => toggleReviewed(selected)}
+                variant={selected.reviewed ? 'default' : 'outline'}
+                className={`w-full ${selected.reviewed ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+              >
                 {selected.reviewed ? 'Mark Unreviewed' : 'Mark Reviewed'}
               </Button>
             </div>

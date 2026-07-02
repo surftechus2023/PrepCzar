@@ -48,15 +48,21 @@ CREATE TABLE IF NOT EXISTS ai_generation_batches (
   completed_at timestamptz
 );
 
-ALTER TABLE questions
-  ADD CONSTRAINT questions_generation_batch_id_fkey
-  FOREIGN KEY (generation_batch_id)
-  REFERENCES ai_generation_batches(id)
-  ON DELETE SET NULL
-  NOT VALID;
-
 DO $$
 BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'questions_generation_batch_id_fkey'
+  ) THEN
+    ALTER TABLE questions
+      ADD CONSTRAINT questions_generation_batch_id_fkey
+      FOREIGN KEY (generation_batch_id)
+      REFERENCES ai_generation_batches(id)
+      ON DELETE SET NULL
+      NOT VALID;
+  END IF;
+
   IF NOT EXISTS (
     SELECT 1
     FROM pg_constraint
