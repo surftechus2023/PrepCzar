@@ -55,6 +55,7 @@ function MCQPracticeContent() {
   const [session, setSession] = useState<PracticeSession | null>(null);
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [completed, setCompleted] = useState(false);
   const [lang, setLang] = useState<'en' | 'es' | 'fr'>('en');
 
@@ -73,7 +74,10 @@ function MCQPracticeContent() {
   }, [profile]);
 
   const initialize = useCallback(async () => {
-    if (!profile) return;
+    if (!profile) {
+      setLoading(false);
+      return;
+    }
 
     let targetTrackId = examId;
 
@@ -102,10 +106,28 @@ function MCQPracticeContent() {
           (responseData as any[]).forEach((r) => { map[r.question_id] = r.selected_answer; });
           setAnswers(map);
         }
+      } else {
+        setLoadError('Practice session not found.');
+        setLoading(false);
+        return;
       }
     }
 
-    if (!targetTrackId) return;
+    if (!targetTrackId) {
+      const accessRes = await authenticatedFetch('/api/dashboard/access');
+      const accessJson = await accessRes.json();
+      targetTrackId = accessJson.access?.[0]?.exam_track_id || null;
+
+      if (targetTrackId) {
+        const voiceParam = voiceMode ? '&voice=1' : '';
+        router.replace(`/dashboard/practice/mcq?exam=${targetTrackId}${voiceParam}`);
+        return;
+      }
+
+      setLoading(false);
+      return;
+    }
+
     setActiveTrackId(targetTrackId);
 
     const allowed = await hasActiveTrackAccess(profile.id, targetTrackId);
@@ -118,7 +140,8 @@ function MCQPracticeContent() {
     const contentJson = await contentRes.json();
 
     if (!contentRes.ok) {
-      router.push('/dashboard/subscriptions');
+      setLoadError(contentJson.error || 'Could not load practice questions.');
+      setLoading(false);
       return;
     }
 
@@ -131,19 +154,23 @@ function MCQPracticeContent() {
       setQuestions(shuffled);
     }
 
+    setLoading(false);
+
     // Create new session if needed
     if (!sessionId && profile) {
-      await createPracticeSession(targetTrackId);
+      try {
+        await createPracticeSession(targetTrackId);
+      } catch (err) {
+        console.error('Could not create MCQ session:', err);
+      }
     }
-
-    setLoading(false);
-  }, [examId, profile, router, sessionId]);
+  }, [examId, profile, router, sessionId, voiceMode]);
 
   useEffect(() => {
-    if (profile && (examId || sessionId)) {
+    if (profile) {
       initialize();
     }
-  }, [initialize, profile, examId, sessionId]);
+  }, [initialize, profile]);
 
   const currentQuestion = questions[currentIdx];
   const currentAnswer = currentQuestion ? answers[currentQuestion.id] : undefined;
@@ -229,7 +256,7 @@ function MCQPracticeContent() {
   }
 
   async function finishSession() {
-    if (!session || !profile) return;
+    if (!profile) return;
 
     const total = Object.keys(answers).length;
     const correct = questions.filter(q => answers[q.id] === getCorrectOption(q)).length;
@@ -239,10 +266,16 @@ function MCQPracticeContent() {
       .map(q => q.topic_id)
       .filter((topicId, index, all) => all.indexOf(topicId) === index);
 
+    const activeSession = session || (activeTrackId ? await createPracticeSession(activeTrackId) : null);
+    if (!activeSession) {
+      setCompleted(true);
+      return;
+    }
+
     await authenticatedFetch('/api/dashboard/practice-session', {
       method: 'PATCH',
       body: JSON.stringify({
-        sessionId: session.id,
+        sessionId: activeSession.id,
         scorePercent,
         weakTopics,
       }),
@@ -280,6 +313,17 @@ function MCQPracticeContent() {
           <RefreshCw className="w-8 h-8 animate-spin text-primary mx-auto mb-3" />
           <p className="text-muted-foreground">Loading practice session...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto text-center py-24">
+        <BookOpenIcon className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4" />
+        <h2 className="text-2xl font-bold mb-4">Could Not Load Practice</h2>
+        <p className="text-muted-foreground mb-6">{loadError}</p>
+        <Button asChild><Link href="/dashboard">Back to Dashboard</Link></Button>
       </div>
     );
   }
