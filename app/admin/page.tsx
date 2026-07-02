@@ -100,6 +100,7 @@ export default function AdminOverviewPage() {
             {[
               { label: 'Generate Content', href: '/admin/generate', desc: 'Create questions, flashcards and vignettes' },
               { label: 'Manage Questions', href: '/admin/questions', desc: 'Review, edit and publish questions' },
+              { label: 'Integrity Review', href: '/admin/review-questions', desc: 'Validate, score, flag and publish generated MCQs' },
               { label: 'Manage Flashcards', href: '/admin/flashcards', desc: 'Add and edit flashcard content' },
               { label: 'Manage Vignettes', href: '/admin/vignettes', desc: 'Manage clinical case scenarios' },
               { label: 'Student Analytics', href: '/admin/analytics', desc: 'Review attempts, scores and exam readiness' },

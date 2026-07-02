@@ -6,7 +6,7 @@ import { Loader2, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { BarChart3, BookOpen, Users, LayoutDashboard, HelpCircle, Layers, MessageSquare, Sparkles } from 'lucide-react';
+import { BarChart3, BookOpen, Users, LayoutDashboard, HelpCircle, Layers, MessageSquare, ShieldCheck, Sparkles } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
@@ -15,6 +15,7 @@ const adminNav = [
   { icon: BookOpen, label: 'Exams', href: '/admin/exams' },
   { icon: Sparkles, label: 'Generate Content', href: '/admin/generate' },
   { icon: HelpCircle, label: 'Questions', href: '/admin/questions' },
+  { icon: ShieldCheck, label: 'Question Review', href: '/admin/review-questions' },
   { icon: Layers, label: 'Flashcards', href: '/admin/flashcards' },
   { icon: MessageSquare, label: 'Vignettes', href: '/admin/vignettes' },
   { icon: BarChart3, label: 'Analytics', href: '/admin/analytics' },
