@@ -314,10 +314,6 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
     existingQuestions: [],
   });
 
-  if (currentIntegrity.integrity_status === 'needs_metadata') {
-    throw new Error('Blueprint metadata is missing. Add topic/subtopic official blueprint text or question blueprint reference text, then rerun integrity check.');
-  }
-
   const metadata: ImprovementMetadata = {
     examTrackId: question.exam_track_id || '',
     topicId: question.topic_id || '',
@@ -333,8 +329,18 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
     subtopicDescription: question.subtopic_record?.description,
     subtopicOfficialBlueprintText: question.subtopic_record?.official_blueprint_text,
     learningObjective: firstText(question.learning_objective, question.subtopic_record?.learning_objective, question.topic?.title ? `Apply ${question.topic.title} to the selected exam track.` : null, 'Apply the selected topic to the selected exam track.'),
-    blueprintReferenceText: firstText(question.blueprint_reference_text, question.subtopic_record?.official_blueprint_text, question.topic?.official_blueprint_text),
+    blueprintReferenceText: firstText(
+      question.blueprint_reference_text,
+      question.subtopic_record?.official_blueprint_text,
+      question.topic?.official_blueprint_text,
+      question.learning_objective,
+      question.subtopic_record?.learning_objective
+    ),
   };
+
+  if (!metadata.blueprintReferenceText) {
+    throw new Error('Blueprint metadata is missing. Add a learning objective, topic/subtopic official blueprint text, or question blueprint reference text, then rerun integrity check.');
+  }
 
   const improved = await improveGeneratedQuestionOnce({
     question: storedQuestionToGenerated(question, metadata),

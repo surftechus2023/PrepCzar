@@ -40,6 +40,7 @@ type EditState = Pick<
   | 'test_taking_tip_en'
   | 'subtopic'
   | 'learning_objective'
+  | 'blueprint_reference_text'
 >;
 
 export default function ReviewQuestionsPage() {
@@ -139,6 +140,7 @@ export default function ReviewQuestionsPage() {
       test_taking_tip_en: question.test_taking_tip_en,
       subtopic: question.subtopic,
       learning_objective: question.learning_objective,
+      blueprint_reference_text: question.blueprint_reference_text,
     });
   }
 
@@ -295,6 +297,10 @@ export default function ReviewQuestionsPage() {
                           <Label>Learning Objective</Label>
                           <Input value={editState.learning_objective || ''} onChange={(event) => setEditField('learning_objective', event.target.value)} />
                         </div>
+                      </div>
+                      <div>
+                        <Label>Blueprint Reference Text</Label>
+                        <Textarea value={editState.blueprint_reference_text || ''} onChange={(event) => setEditField('blueprint_reference_text', event.target.value)} />
                       </div>
                     </div>
                   ) : (
