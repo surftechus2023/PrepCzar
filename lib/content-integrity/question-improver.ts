@@ -108,6 +108,22 @@ function formatFlags(result: QuestionIntegrityResult) {
   ].filter(Boolean).join('\n');
 }
 
+function firstText(...values: Array<string | null | undefined>) {
+  return values.find((value) => typeof value === 'string' && value.trim())?.trim() || '';
+}
+
+function normalizeGeneratedQuestion(value: any, metadata: ImprovementMetadata): GeneratedQuestion {
+  const candidate = {
+    ...value,
+    topic: firstText(value?.topic, metadata.topicTitle, metadata.subtopic, 'Selected topic'),
+    subtopic: firstText(value?.subtopic, metadata.subtopic, metadata.topicTitle, 'Selected subtopic'),
+    learning_objective: firstText(value?.learning_objective, metadata.learningObjective, `Apply ${metadata.topicTitle} to the selected exam track.`),
+    source_topic: firstText(value?.source_topic, value?.topic, metadata.topicTitle, metadata.subtopic, 'Selected topic'),
+  };
+
+  return generatedQuestionSchema.parse(candidate);
+}
+
 async function rewriteQuestion(input: ImproveGeneratedQuestionInput) {
   const openai = getOpenAIClient();
   const { question, metadata, integrityResult } = input;
@@ -174,13 +190,18 @@ Return only one JSON object matching the generated question schema.`;
     throw new Error('OpenAI returned invalid improved question JSON.');
   }
 
-  const direct = generatedQuestionSchema.safeParse(parsed);
-  if (direct.success) return direct.data;
+  try {
+    return normalizeGeneratedQuestion(parsed, metadata);
+  } catch {
+    // Try wrapped shape below.
+  }
 
-  const wrapped = generatedQuestionSchema.safeParse((parsed as any)?.question);
-  if (wrapped.success) return wrapped.data;
+  try {
+    return normalizeGeneratedQuestion((parsed as any)?.question, metadata);
+  } catch (err: any) {
+    throw new Error(`Improved question failed validation: ${err.message}`);
+  }
 
-  throw new Error(`Improved question failed validation: ${direct.error.message}`);
 }
 
 export async function improveGeneratedQuestionOnce(input: ImproveGeneratedQuestionInput) {
@@ -197,7 +218,7 @@ export async function improveGeneratedQuestionOnce(input: ImproveGeneratedQuesti
   };
 }
 
-function storedQuestionToGenerated(question: Question): GeneratedQuestion {
+function storedQuestionToGenerated(question: Question, metadata: ImprovementMetadata): GeneratedQuestion {
   return {
     question: question.question_en,
     option_a: question.option_a_en,
@@ -213,10 +234,10 @@ function storedQuestionToGenerated(question: Question): GeneratedQuestion {
     test_taking_tip: question.test_taking_tip_en || '',
     difficulty: question.difficulty,
     cognitive_level: (question.cognitive_level || 'application') as GeneratedQuestion['cognitive_level'],
-    topic: question.source_topic || '',
-    subtopic: question.subtopic || '',
-    learning_objective: question.learning_objective || '',
-    source_topic: question.source_topic || '',
+    topic: firstText(question.source_topic, metadata.topicTitle, metadata.subtopic, 'Selected topic'),
+    subtopic: firstText(question.subtopic, metadata.subtopic, metadata.topicTitle, 'Selected subtopic'),
+    learning_objective: firstText(question.learning_objective, metadata.learningObjective, `Apply ${metadata.topicTitle} to the selected exam track.`),
+    source_topic: firstText(question.source_topic, metadata.topicTitle, metadata.subtopic, 'Selected topic'),
   };
 }
 
@@ -255,12 +276,12 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
     topicId: question.topic_id || '',
     examTrackName: question.exam_track?.full_name || question.exam_track?.name || 'Selected exam track',
     topicTitle: question.topic?.title || question.source_topic || 'Selected topic',
-    subtopic: question.subtopic || '',
-    learningObjective: question.learning_objective || '',
+    subtopic: firstText(question.subtopic, question.topic?.title, question.source_topic, 'Selected subtopic'),
+    learningObjective: firstText(question.learning_objective, question.topic?.title ? `Apply ${question.topic.title} to the selected exam track.` : null, 'Apply the selected topic to the selected exam track.'),
   };
 
   const improved = await improveGeneratedQuestionOnce({
-    question: storedQuestionToGenerated(question),
+    question: storedQuestionToGenerated(question, metadata),
     metadata,
     integrityResult: currentIntegrity,
   });
