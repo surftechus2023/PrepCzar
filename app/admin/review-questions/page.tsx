@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle, Edit, Loader2, Send, XCircle } from 'lucide-react';
+import { CheckCircle, Edit, Loader2, RefreshCw, Send, ShieldCheck, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -40,6 +40,7 @@ export default function ReviewQuestionsPage() {
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditState | null>(null);
+  const [checkingId, setCheckingId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const loadQuestions = useCallback(async () => {
@@ -83,7 +84,20 @@ export default function ReviewQuestionsPage() {
   }
 
   async function publish(question: ReviewQuestion) {
-    if (await updateQuestion(question.id, { reviewed: true, active: true })) {
+    const canPublish = question.integrity_status === 'passed' || question.integrity_override;
+    const values: Partial<Question> = { reviewed: true, active: true };
+
+    if (!canPublish) {
+      const reason = window.prompt('Integrity check has not passed. Enter an admin override reason to publish anyway:');
+      if (!reason?.trim()) {
+        toast({ title: 'Publish canceled', description: 'Override reason is required when integrity has not passed.' });
+        return;
+      }
+      values.integrity_override = true;
+      values.integrity_override_reason = reason.trim();
+    }
+
+    if (await updateQuestion(question.id, values)) {
       setQuestions((current) => current.filter((item) => item.id !== question.id));
       toast({ title: 'Question published' });
     }
@@ -131,8 +145,39 @@ export default function ReviewQuestionsPage() {
     }
   }
 
+  async function rerunIntegrityCheck(question: ReviewQuestion) {
+    setCheckingId(question.id);
+    const response = await authenticatedFetch('/api/admin/check-question-integrity', {
+      method: 'POST',
+      body: JSON.stringify({ question_id: question.id }),
+    });
+    const data = await response.json();
+    setCheckingId(null);
+
+    if (!response.ok) {
+      toast({ title: 'Integrity check failed', description: data.error, variant: 'destructive' });
+      return;
+    }
+
+    const updatedQuestion = data.results?.[0]?.question as ReviewQuestion | undefined;
+    if (updatedQuestion) {
+      setQuestions((current) => current.map((item) => item.id === question.id ? updatedQuestion : item));
+    }
+    toast({ title: 'Integrity check complete', description: `Score ${data.results?.[0]?.score ?? 'n/a'} · ${data.results?.[0]?.status ?? 'unknown'}` });
+  }
+
   function setEditField<K extends keyof EditState>(key: K, value: EditState[K]) {
     setEditState((current) => current ? { ...current, [key]: value } : current);
+  }
+
+  function flagList(value: unknown) {
+    return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+  }
+
+  function integrityBadgeVariant(status: Question['integrity_status']) {
+    if (status === 'passed') return 'default';
+    if (status === 'failed') return 'destructive';
+    return 'secondary';
   }
 
   return (
@@ -165,6 +210,9 @@ export default function ReviewQuestionsPage() {
                       {(question.topic as any)?.title && <Badge variant="outline">{(question.topic as any).title}</Badge>}
                       {question.subtopic && <Badge variant="secondary">{question.subtopic}</Badge>}
                       <Badge variant="outline">Score {question.quality_score ?? 'n/a'}</Badge>
+                      <Badge variant={integrityBadgeVariant(question.integrity_status)}>
+                        Integrity {question.integrity_score ?? 0} · {question.integrity_status}
+                      </Badge>
                     </div>
                   </div>
                 </CardHeader>
@@ -241,6 +289,47 @@ export default function ReviewQuestionsPage() {
                         <p><span className="font-medium">Learning objective:</span> {question.learning_objective || 'None'}</p>
                         <p><span className="font-medium">Review notes:</span> {question.review_notes || 'None'}</p>
                       </div>
+                      <div className="rounded-md border bg-secondary/20 p-4 text-sm">
+                        <div className="flex items-center gap-2 font-medium mb-3">
+                          <ShieldCheck className="w-4 h-4" />
+                          Integrity Review
+                        </div>
+                        <div className="grid md:grid-cols-2 gap-2">
+                          <p><span className="font-medium">Status:</span> {question.integrity_status}</p>
+                          <p><span className="font-medium">Integrity score:</span> {question.integrity_score ?? 0}</p>
+                          <p><span className="font-medium">Blueprint alignment:</span> {question.blueprint_alignment_score ?? 0}</p>
+                          <p><span className="font-medium">Predicted difficulty:</span> {question.predicted_difficulty || 'Not checked'}</p>
+                          <p><span className="font-medium">Cognitive level:</span> {question.cognitive_level_detected || 'Not checked'}</p>
+                          <p><span className="font-medium">Plagiarism risk:</span> {question.plagiarism_risk_score ?? 0}</p>
+                        </div>
+                        <div className="mt-3 space-y-2">
+                          {[
+                            ['Quality flags', flagList(question.quality_flags)],
+                            ['Distractor flags', flagList(question.distractor_flags)],
+                            ['Bias flags', flagList(question.bias_flags)],
+                          ].map(([label, flags]) => (
+                            <div key={label as string}>
+                              <p className="font-medium">{label as string}</p>
+                              {(flags as string[]).length ? (
+                                <ul className="list-disc pl-5 text-muted-foreground">
+                                  {(flags as string[]).map((flag) => <li key={flag}>{flag}</li>)}
+                                </ul>
+                              ) : (
+                                <p className="text-muted-foreground">None</p>
+                              )}
+                            </div>
+                          ))}
+                          <div>
+                            <p className="font-medium">Integrity notes</p>
+                            <p className="text-muted-foreground whitespace-pre-wrap">{question.integrity_review_notes || 'None'}</p>
+                          </div>
+                          {question.integrity_override && (
+                            <p className="text-amber-700 dark:text-amber-300">
+                              Admin override recorded: {question.integrity_override_reason || 'No reason provided'}
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -259,6 +348,10 @@ export default function ReviewQuestionsPage() {
                         <Button size="sm" onClick={() => publish(question)}>
                           <Send className="w-4 h-4 mr-2" />
                           Publish
+                        </Button>
+                        <Button size="sm" variant="outline" disabled={checkingId === question.id} onClick={() => rerunIntegrityCheck(question)}>
+                          {checkingId === question.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                          Rerun Integrity
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => startEdit(question)}>
                           <Edit className="w-4 h-4 mr-2" />

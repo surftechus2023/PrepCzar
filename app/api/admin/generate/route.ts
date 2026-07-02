@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { checkAndUpdateQuestionIntegrity } from '@/lib/content-integrity/question-integrity-checker';
 import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
 
 export const dynamic = 'force-dynamic';
@@ -135,8 +136,12 @@ export async function POST(req: NextRequest) {
         }));
 
       if (items.length) {
-        const { error } = await supabaseAdmin.from('questions').insert(items);
+        const { data: inserted, error } = await supabaseAdmin.from('questions').insert(items).select('id');
         if (error) throw new Error(error.message);
+
+        for (const question of inserted || []) {
+          await checkAndUpdateQuestionIntegrity(supabaseAdmin, question.id);
+        }
       }
     } else if (parsedBody.type === 'flashcards') {
       const generated = await generateFlashcards(trackName, topicTitle, Math.min(parsedBody.count, 20));

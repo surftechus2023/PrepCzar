@@ -10,6 +10,7 @@ import {
   loadExistingQuestionFingerprints,
   validateQuestionQuality,
 } from '@/lib/content-quality/question-quality';
+import { checkAndUpdateQuestionIntegrity } from '@/lib/content-integrity/question-integrity-checker';
 
 export const dynamic = 'force-dynamic';
 
@@ -125,6 +126,7 @@ export async function POST(req: NextRequest) {
     let quantityRejected = 0;
     const rejected: Array<{ question: string; qualityScore: number; reviewNotes: string[] }> = [];
     const insertedIds: string[] = [];
+    const integrityResults: Array<{ questionId: string; status: string; score: number }> = [];
 
     while (quantityGenerated < body.quantity) {
       const remaining = body.quantity - quantityGenerated;
@@ -225,7 +227,17 @@ export async function POST(req: NextRequest) {
 
         if (insertError) throw new Error(insertError.message);
         quantityInserted += inserted?.length || 0;
-        insertedIds.push(...((inserted || []) as Array<{ id: string }>).map((row) => row.id));
+        const newIds = ((inserted || []) as Array<{ id: string }>).map((row) => row.id);
+        insertedIds.push(...newIds);
+
+        for (const questionId of newIds) {
+          const checked = await checkAndUpdateQuestionIntegrity(supabaseAdmin, questionId);
+          integrityResults.push({
+            questionId,
+            status: checked.result.integrity_status,
+            score: checked.result.integrity_score,
+          });
+        }
       }
 
       if (batchId) {
@@ -272,6 +284,7 @@ export async function POST(req: NextRequest) {
       quantityInserted,
       quantityRejected,
       insertedIds,
+      integrityResults,
       rejected,
     });
   } catch (err: any) {

@@ -77,9 +77,41 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid update request' }, { status: 400 });
     }
 
-    const { data, error } = await getSupabaseAdmin()
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: current, error: currentError } = await supabaseAdmin
       .from('questions')
-      .update(values)
+      .select('reviewed, active, integrity_status, integrity_override')
+      .eq('id', id)
+      .single();
+
+    if (currentError) {
+      return NextResponse.json({ error: currentError.message }, { status: 500 });
+    }
+
+    const updateValues = { ...values };
+    if (updateValues.integrity_override === true) {
+      if (!String(updateValues.integrity_override_reason || '').trim()) {
+        return NextResponse.json({ error: 'Integrity override reason is required.' }, { status: 400 });
+      }
+      updateValues.integrity_override_by = adminUser.id;
+      updateValues.integrity_override_at = new Date().toISOString();
+    }
+
+    const nextReviewed = updateValues.reviewed ?? current.reviewed;
+    const nextActive = updateValues.active ?? current.active;
+    const nextIntegrityStatus = updateValues.integrity_status ?? current.integrity_status;
+    const nextIntegrityOverride = updateValues.integrity_override ?? current.integrity_override;
+
+    if (nextActive === true && (!nextReviewed || (nextIntegrityStatus !== 'passed' && nextIntegrityOverride !== true))) {
+      return NextResponse.json(
+        { error: 'Questions can only be published after review and a passed integrity check, unless an admin override is recorded.' },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('questions')
+      .update(updateValues)
       .eq('id', id)
       .select('*, exam_track:exam_tracks(name, slug), topic:topics(title)')
       .single();

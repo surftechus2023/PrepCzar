@@ -64,13 +64,18 @@ export async function GET(req: NextRequest) {
     }
 
     const table = TABLE_BY_TYPE[contentType];
-    const { data: content, error: contentError } = await supabaseAdmin
+    let contentQuery = supabaseAdmin
       .from(table)
       .select('*')
       .eq('exam_track_id', examTrackId)
       .eq('active', true)
-      .eq('reviewed', true)
-      .limit(LIMIT_BY_TYPE[contentType]);
+      .eq('reviewed', true);
+
+    if (contentType === 'mcq') {
+      contentQuery = contentQuery.or('integrity_status.eq.passed,integrity_override.eq.true');
+    }
+
+    const { data: content, error: contentError } = await contentQuery.limit(LIMIT_BY_TYPE[contentType]);
 
     if (contentError) {
       return NextResponse.json({ error: contentError.message }, { status: 500 });
