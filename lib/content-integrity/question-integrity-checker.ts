@@ -2,7 +2,7 @@ import { createHash } from 'crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Question } from '@/types/database';
 
-type IntegrityStatus = 'pending' | 'passed' | 'needs_review' | 'failed';
+export type IntegrityStatus = 'pending' | 'passed' | 'needs_review' | 'needs_improvement' | 'needs_human_review' | 'failed';
 type CognitiveLevel =
   | 'recall'
   | 'comprehension'
@@ -13,7 +13,7 @@ type CognitiveLevel =
   | 'safety'
   | 'prioritization';
 
-interface QuestionContext {
+export interface QuestionContext {
   examTrack?: { id: string; name: string | null; full_name?: string | null; slug?: string | null } | null;
   topic?: { id: string; title: string | null; description?: string | null } | null;
   existingQuestions?: Array<{ id: string; question_en: string | null; duplicate_hash: string | null }>;
@@ -26,6 +26,7 @@ export interface QuestionIntegrityResult {
   bias_flags: string[];
   distractor_flags: string[];
   blueprint_alignment_score: number;
+  difficulty_quality_score: number;
   cognitive_level_detected: CognitiveLevel;
   predicted_difficulty: 'easy' | 'medium' | 'hard';
   plagiarism_risk_score: number;
@@ -161,30 +162,33 @@ function evaluateDistractors(question: Question) {
 }
 
 function evaluateBlueprintAlignment(question: Question, context: QuestionContext) {
-  const blueprintText = [
-    context.examTrack?.name,
-    context.examTrack?.full_name,
-    context.topic?.title,
-    context.topic?.description,
-    question.subtopic,
-    question.learning_objective,
-    question.source_topic,
-  ].join(' ');
   const questionText = [
     question.question_en,
     ...questionOptions(question),
     question.rationale_en,
     question.correct_rationale_en,
   ].join(' ');
-  const blueprintTokens = tokenize(blueprintText);
-
-  if (!blueprintTokens.length) return 75;
-
   const questionNormalized = normalizeText(questionText);
-  const matched = blueprintTokens.filter((token) => questionNormalized.includes(token)).length;
-  const score = Math.round(Math.min(100, Math.max(0, (matched / Math.min(blueprintTokens.length, 12)) * 100)));
+  const scoreParts = [
+    { text: `${context.topic?.title || ''} ${context.topic?.description || ''}`, weight: 30 },
+    { text: question.subtopic || '', weight: 25 },
+    { text: question.learning_objective || '', weight: 35 },
+    { text: `${context.examTrack?.name || ''} ${context.examTrack?.full_name || ''} ${question.source_topic || ''}`, weight: 10 },
+  ];
 
-  return Math.max(score, matched > 0 ? 70 : 35);
+  let availableWeight = 0;
+  let score = 0;
+
+  scoreParts.forEach((part) => {
+    const tokens = tokenize(part.text);
+    if (!tokens.length) return;
+    availableWeight += part.weight;
+    const matched = tokens.filter((token) => questionNormalized.includes(token)).length;
+    score += Math.min(1, matched / Math.min(tokens.length, 4)) * part.weight;
+  });
+
+  if (!availableWeight) return 75;
+  return Math.round(Math.max(35, Math.min(100, (score / availableWeight) * 100)));
 }
 
 function detectCognitiveLevel(question: Question): CognitiveLevel {
@@ -254,6 +258,23 @@ function isTooLowForTrack(question: Question, context: QuestionContext, detected
   return detected === 'recall' && /hard|medium/.test(question.difficulty || '');
 }
 
+function evaluateDifficultyQuality(question: Question, context: QuestionContext, detected: CognitiveLevel, predictedDifficulty: 'easy' | 'medium' | 'hard') {
+  let score = 100;
+  const stemTokens = tokenize(question.question_en);
+  const intended = question.difficulty || 'medium';
+
+  if (predictedDifficulty !== intended) score -= 20;
+  if (isTooLowForTrack(question, context, detected)) score -= 35;
+  if ((intended === 'medium' || intended === 'hard') && detected === 'recall') score -= 30;
+  if (intended === 'hard' && !['analysis', 'clinical judgment', 'safety', 'prioritization', 'ethics'].includes(detected)) score -= 20;
+  if (stemTokens.length < 25 && intended !== 'easy') score -= 15;
+  if (!/\b(case|client|patient|scenario|first|priority|best|most appropriate|assessment|intervention|response)\b/i.test(question.question_en) && detected !== 'recall') {
+    score -= 15;
+  }
+
+  return Math.max(0, Math.min(100, score));
+}
+
 export function evaluateQuestionIntegrity(question: Question, context: QuestionContext = {}): QuestionIntegrityResult {
   const duplicateHash = createQuestionDuplicateHash(question.question_en, question.exam_track_id);
   const qualityFlags = evaluateQuality(question);
@@ -261,11 +282,13 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
   const blueprintAlignmentScore = evaluateBlueprintAlignment(question, context);
   const cognitiveLevelDetected = detectCognitiveLevel(question);
   const predictedDifficulty = predictDifficulty(question, cognitiveLevelDetected);
+  const difficultyQualityScore = evaluateDifficultyQuality(question, context, cognitiveLevelDetected, predictedDifficulty);
   const biasFlags = evaluateBias(question);
   const plagiarismRiskScore = evaluatePlagiarismRisk(question, context, duplicateHash);
   const notes: string[] = [];
 
-  if (blueprintAlignmentScore < 70) notes.push('Question appears off-topic or weakly aligned to the selected blueprint metadata.');
+  if (blueprintAlignmentScore < 90) notes.push('Question is below the 90+ blueprint alignment target and should be improved before human review.');
+  if (difficultyQualityScore < 80) notes.push('Question is below the 80+ professional difficulty quality target and should be improved.');
   if (!cognitiveLevelMatches(question, cognitiveLevelDetected)) notes.push('Detected cognitive level does not clearly match the intended cognitive level.');
   if (isTooLowForTrack(question, context, cognitiveLevelDetected)) notes.push('Question may be too low-level for this exam track.');
   if (predictedDifficulty !== question.difficulty) notes.push(`Predicted difficulty (${predictedDifficulty}) differs from intended difficulty (${question.difficulty}).`);
@@ -281,11 +304,12 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
   const originalityPoints = plagiarismRiskScore > 70 ? 0 : plagiarismRiskScore >= 45 ? 2 : 5;
   const integrityScore = Math.max(0, Math.min(100, itemWritingPoints + distractorPoints + blueprintPoints + cognitivePoints + difficultyPoints + biasPoints + originalityPoints));
 
-  let status: IntegrityStatus = 'failed';
-  if (integrityScore >= 85) status = 'passed';
-  else if (integrityScore >= 70) status = 'needs_review';
+  let status: IntegrityStatus = 'passed';
 
-  if (plagiarismRiskScore > 70 || blueprintAlignmentScore < 70) status = 'failed';
+  if (plagiarismRiskScore > 70) status = 'failed';
+  else if (blueprintAlignmentScore < 90 || difficultyQualityScore < 80) status = 'needs_improvement';
+  else if (integrityScore < 75) status = 'needs_improvement';
+  else if (integrityScore < 85) status = 'needs_review';
   if (biasFlags.length && status === 'passed') status = 'needs_review';
 
   return {
@@ -295,6 +319,7 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
     bias_flags: biasFlags,
     distractor_flags: distractorFlags,
     blueprint_alignment_score: blueprintAlignmentScore,
+    difficulty_quality_score: difficultyQualityScore,
     cognitive_level_detected: cognitiveLevelDetected,
     predicted_difficulty: predictedDifficulty,
     plagiarism_risk_score: plagiarismRiskScore,
@@ -342,6 +367,7 @@ export async function checkAndUpdateQuestionIntegrity(supabaseAdmin: SupabaseCli
       bias_flags: result.bias_flags,
       distractor_flags: result.distractor_flags,
       blueprint_alignment_score: result.blueprint_alignment_score,
+      difficulty_quality_score: result.difficulty_quality_score,
       cognitive_level_detected: result.cognitive_level_detected,
       predicted_difficulty: result.predicted_difficulty,
       plagiarism_risk_score: result.plagiarism_risk_score,

@@ -80,7 +80,7 @@ export async function PATCH(req: NextRequest) {
     const supabaseAdmin = getSupabaseAdmin();
     const { data: current, error: currentError } = await supabaseAdmin
       .from('questions')
-      .select('reviewed, active, integrity_status, integrity_override')
+      .select('reviewed, active, integrity_status, integrity_override, blueprint_alignment_score, difficulty_quality_score')
       .eq('id', id)
       .single();
 
@@ -101,10 +101,25 @@ export async function PATCH(req: NextRequest) {
     const nextActive = updateValues.active ?? current.active;
     const nextIntegrityStatus = updateValues.integrity_status ?? current.integrity_status;
     const nextIntegrityOverride = updateValues.integrity_override ?? current.integrity_override;
+    const nextBlueprintAlignmentScore = updateValues.blueprint_alignment_score ?? current.blueprint_alignment_score;
+    const nextDifficultyQualityScore = updateValues.difficulty_quality_score ?? current.difficulty_quality_score;
 
-    if (nextActive === true && (!nextReviewed || (nextIntegrityStatus !== 'passed' && nextIntegrityOverride !== true))) {
+    if (
+      nextActive === true
+      && (
+        !nextReviewed
+        || (
+          nextIntegrityOverride !== true
+          && (
+            nextIntegrityStatus !== 'passed'
+            || nextBlueprintAlignmentScore < 90
+            || nextDifficultyQualityScore < 80
+          )
+        )
+      )
+    ) {
       return NextResponse.json(
-        { error: 'Questions can only be published after review and a passed integrity check, unless an admin override is recorded.' },
+        { error: 'Questions can only be published after review, passed integrity, blueprint score >= 90, and difficulty score >= 80, unless an admin override is recorded.' },
         { status: 400 }
       );
     }

@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
         distractor_flags: checked.result.distractor_flags,
         bias_flags: checked.result.bias_flags,
         blueprint_alignment_score: checked.result.blueprint_alignment_score,
+        difficulty_quality_score: checked.result.difficulty_quality_score,
         predicted_difficulty: checked.result.predicted_difficulty,
         cognitive_level_detected: checked.result.cognitive_level_detected,
         plagiarism_risk_score: checked.result.plagiarism_risk_score,

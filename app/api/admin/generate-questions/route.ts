@@ -11,6 +11,10 @@ import {
   validateQuestionQuality,
 } from '@/lib/content-quality/question-quality';
 import { checkAndUpdateQuestionIntegrity } from '@/lib/content-integrity/question-integrity-checker';
+import {
+  evaluateGeneratedQuestionIntegrity,
+  improveGeneratedQuestionOnce,
+} from '@/lib/content-integrity/question-improver';
 
 export const dynamic = 'force-dynamic';
 
@@ -150,7 +154,10 @@ export async function POST(req: NextRequest) {
 
       quantityGenerated += generated.length;
 
-      const acceptedRows = generated.flatMap((question) => {
+      const acceptedRows: any[] = [];
+
+      for (const originalQuestion of generated) {
+        let question = originalQuestion;
         const quality = validateQuestionQuality(question, {
           examTrackId: body.examTrackId,
           topicId: body.topicId,
@@ -173,7 +180,56 @@ export async function POST(req: NextRequest) {
             qualityScore: quality.qualityScore,
             reviewNotes: quality.reviewNotes,
           });
-          return [];
+          continue;
+        }
+
+        let integrity = evaluateGeneratedQuestionIntegrity(
+          question,
+          {
+            examTrackId: body.examTrackId,
+            topicId: body.topicId,
+            examTrackName: examName,
+            topicTitle: topicRes.data.title,
+            subtopic: body.subtopic,
+            learningObjective: body.learningObjective,
+          },
+          existingQuestions.map((existing, index) => ({
+            id: `existing-${index}`,
+            question_en: existing.question_en,
+            duplicate_hash: existing.duplicate_hash,
+          }))
+        );
+
+        let autoImproved = false;
+        let improvementAttempts = 0;
+        let improvementNotes: string | null = null;
+
+        if (
+          integrity.blueprint_alignment_score < 90
+          || integrity.difficulty_quality_score < 80
+          || integrity.integrity_score < 85
+        ) {
+          const improved = await improveGeneratedQuestionOnce({
+            question,
+            metadata: {
+              examTrackId: body.examTrackId,
+              topicId: body.topicId,
+              examTrackName: examName,
+              topicTitle: topicRes.data.title,
+              subtopic: body.subtopic,
+              learningObjective: body.learningObjective,
+            },
+            integrityResult: integrity,
+          });
+
+          question = improved.question;
+          integrity = improved.integrityResult;
+          autoImproved = true;
+          improvementAttempts = 1;
+          improvementNotes = improved.improvementNotes;
+          quality.duplicateHash = integrity.duplicate_hash;
+          quality.qualityScore = Math.max(quality.qualityScore, integrity.integrity_score);
+          quality.reviewNotes.push('AI auto-improved candidate before saving.');
         }
 
         seenHashes.add(quality.duplicateHash);
@@ -197,9 +253,12 @@ export async function POST(req: NextRequest) {
           active: false,
         };
 
-        if (!supportsQualityMetadata) return [row];
+        if (!supportsQualityMetadata) {
+          acceptedRows.push(row);
+          continue;
+        }
 
-        return [{
+        acceptedRows.push({
           ...row,
           correct_rationale_en: question.correct_rationale,
           option_a_rationale_en: question.option_a_rationale,
@@ -216,8 +275,23 @@ export async function POST(req: NextRequest) {
           review_notes: quality.reviewNotes.join('\n'),
           generation_batch_id: batchId,
           generated_by_ai: true,
-        }];
-      });
+          integrity_status: integrity.integrity_status,
+          integrity_score: integrity.integrity_score,
+          blueprint_alignment_score: integrity.blueprint_alignment_score,
+          difficulty_quality_score: integrity.difficulty_quality_score,
+          quality_flags: integrity.quality_flags,
+          bias_flags: integrity.bias_flags,
+          distractor_flags: integrity.distractor_flags,
+          cognitive_level_detected: integrity.cognitive_level_detected,
+          predicted_difficulty: integrity.predicted_difficulty,
+          plagiarism_risk_score: integrity.plagiarism_risk_score,
+          integrity_review_notes: integrity.integrity_review_notes,
+          integrity_checked_at: new Date().toISOString(),
+          improvement_attempts: improvementAttempts,
+          auto_improved: autoImproved,
+          improvement_notes: improvementNotes,
+        });
+      }
 
       if (acceptedRows.length > 0) {
         const { data: inserted, error: insertError } = await supabaseAdmin

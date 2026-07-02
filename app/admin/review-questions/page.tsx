@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle, Edit, Loader2, RefreshCw, Send, ShieldCheck, XCircle } from 'lucide-react';
+import { CheckCircle, Edit, Loader2, RefreshCw, Send, ShieldCheck, Sparkles, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -41,6 +41,7 @@ export default function ReviewQuestionsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditState | null>(null);
   const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [improvingId, setImprovingId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const loadQuestions = useCallback(async () => {
@@ -84,7 +85,11 @@ export default function ReviewQuestionsPage() {
   }
 
   async function publish(question: ReviewQuestion) {
-    const canPublish = question.integrity_status === 'passed' || question.integrity_override;
+    const canPublish = (
+      question.integrity_status === 'passed'
+      && (question.blueprint_alignment_score ?? 0) >= 90
+      && (question.difficulty_quality_score ?? 0) >= 80
+    ) || question.integrity_override;
     const values: Partial<Question> = { reviewed: true, active: true };
 
     if (!canPublish) {
@@ -163,7 +168,28 @@ export default function ReviewQuestionsPage() {
     if (updatedQuestion) {
       setQuestions((current) => current.map((item) => item.id === question.id ? updatedQuestion : item));
     }
-    toast({ title: 'Integrity check complete', description: `Score ${data.results?.[0]?.score ?? 'n/a'} · ${data.results?.[0]?.status ?? 'unknown'}` });
+    toast({ title: 'Integrity check complete', description: `Score ${data.results?.[0]?.score ?? 'n/a'} - ${data.results?.[0]?.status ?? 'unknown'}` });
+  }
+
+  async function autoImproveAndRecheck(question: ReviewQuestion) {
+    setImprovingId(question.id);
+    const response = await authenticatedFetch('/api/admin/improve-question', {
+      method: 'POST',
+      body: JSON.stringify({ question_id: question.id }),
+    });
+    const data = await response.json();
+    setImprovingId(null);
+
+    if (!response.ok) {
+      toast({ title: 'Auto-improvement failed', description: data.error, variant: 'destructive' });
+      return;
+    }
+
+    if (data.question) {
+      setQuestions((current) => current.map((item) => item.id === question.id ? data.question : item));
+    }
+
+    toast({ title: 'Auto-improve complete', description: `Score ${data.score ?? 'n/a'} - ${data.status ?? 'unknown'}` });
   }
 
   function setEditField<K extends keyof EditState>(key: K, value: EditState[K]) {
@@ -176,7 +202,7 @@ export default function ReviewQuestionsPage() {
 
   function integrityBadgeVariant(status: Question['integrity_status']) {
     if (status === 'passed') return 'default';
-    if (status === 'failed') return 'destructive';
+    if (status === 'failed' || status === 'needs_human_review') return 'destructive';
     return 'secondary';
   }
 
@@ -211,7 +237,7 @@ export default function ReviewQuestionsPage() {
                       {question.subtopic && <Badge variant="secondary">{question.subtopic}</Badge>}
                       <Badge variant="outline">Score {question.quality_score ?? 'n/a'}</Badge>
                       <Badge variant={integrityBadgeVariant(question.integrity_status)}>
-                        Integrity {question.integrity_score ?? 0} · {question.integrity_status}
+                        Integrity {question.integrity_score ?? 0} - {question.integrity_status}
                       </Badge>
                     </div>
                   </div>
@@ -298,9 +324,12 @@ export default function ReviewQuestionsPage() {
                           <p><span className="font-medium">Status:</span> {question.integrity_status}</p>
                           <p><span className="font-medium">Integrity score:</span> {question.integrity_score ?? 0}</p>
                           <p><span className="font-medium">Blueprint alignment:</span> {question.blueprint_alignment_score ?? 0}</p>
+                          <p><span className="font-medium">Difficulty quality:</span> {question.difficulty_quality_score ?? 0}</p>
                           <p><span className="font-medium">Predicted difficulty:</span> {question.predicted_difficulty || 'Not checked'}</p>
                           <p><span className="font-medium">Cognitive level:</span> {question.cognitive_level_detected || 'Not checked'}</p>
                           <p><span className="font-medium">Plagiarism risk:</span> {question.plagiarism_risk_score ?? 0}</p>
+                          <p><span className="font-medium">Improvement attempts:</span> {question.improvement_attempts ?? 0}/2</p>
+                          <p><span className="font-medium">Auto-improved:</span> {question.auto_improved ? 'Yes' : 'No'}</p>
                         </div>
                         <div className="mt-3 space-y-2">
                           {[
@@ -322,6 +351,10 @@ export default function ReviewQuestionsPage() {
                           <div>
                             <p className="font-medium">Integrity notes</p>
                             <p className="text-muted-foreground whitespace-pre-wrap">{question.integrity_review_notes || 'None'}</p>
+                          </div>
+                          <div>
+                            <p className="font-medium">Improvement notes</p>
+                            <p className="text-muted-foreground whitespace-pre-wrap">{question.improvement_notes || 'None'}</p>
                           </div>
                           {question.integrity_override && (
                             <p className="text-amber-700 dark:text-amber-300">
@@ -352,6 +385,10 @@ export default function ReviewQuestionsPage() {
                         <Button size="sm" variant="outline" disabled={checkingId === question.id} onClick={() => rerunIntegrityCheck(question)}>
                           {checkingId === question.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
                           Rerun Integrity
+                        </Button>
+                        <Button size="sm" variant="outline" disabled={improvingId === question.id || (question.improvement_attempts ?? 0) >= 2} onClick={() => autoImproveAndRecheck(question)}>
+                          {improvingId === question.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                          Auto-Improve and Recheck
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => startEdit(question)}>
                           <Edit className="w-4 h-4 mr-2" />

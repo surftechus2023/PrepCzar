@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
       .eq('reviewed', true);
 
     if (contentType === 'mcq') {
-      contentQuery = contentQuery.or('integrity_status.eq.passed,integrity_override.eq.true');
+      contentQuery = contentQuery.or('and(integrity_status.eq.passed,blueprint_alignment_score.gte.90,difficulty_quality_score.gte.80),integrity_override.eq.true');
     }
 
     const { data: content, error: contentError } = await contentQuery.limit(LIMIT_BY_TYPE[contentType]);

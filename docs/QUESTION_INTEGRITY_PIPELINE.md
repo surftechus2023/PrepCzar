@@ -19,7 +19,7 @@ This pipeline is an automated quality-control layer. It does not replace profess
 
 The `questions` table stores:
 
-- `integrity_status`: `pending`, `passed`, `needs_review`, or `failed`
+- `integrity_status`: `pending`, `passed`, `needs_review`, `needs_improvement`, `needs_human_review`, or `failed`
 - `integrity_score`: overall 0–100 score
 - `quality_flags`: item-writing quality issues
 - `bias_flags`: fairness and bias issues

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { checkAndUpdateQuestionIntegrity } from '@/lib/content-integrity/question-integrity-checker';
+import { autoImproveStoredQuestion } from '@/lib/content-integrity/question-improver';
 import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
 
 export const dynamic = 'force-dynamic';
@@ -140,7 +141,14 @@ export async function POST(req: NextRequest) {
         if (error) throw new Error(error.message);
 
         for (const question of inserted || []) {
-          await checkAndUpdateQuestionIntegrity(supabaseAdmin, question.id);
+          const checked = await checkAndUpdateQuestionIntegrity(supabaseAdmin, question.id);
+          if (
+            checked.result.blueprint_alignment_score < 90
+            || checked.result.difficulty_quality_score < 80
+            || checked.result.integrity_score < 85
+          ) {
+            await autoImproveStoredQuestion(supabaseAdmin, question.id);
+          }
         }
       }
     } else if (parsedBody.type === 'flashcards') {

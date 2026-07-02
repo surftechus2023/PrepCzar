@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { getOpenAIClient } from './client';
 
 export const QUESTION_GENERATOR_MODEL = 'gpt-4o-mini';
-export const QUESTION_PROMPT_VERSION = 'mcq-quality-v1';
+export const QUESTION_PROMPT_VERSION = 'mcq-quality-v2-strict-integrity';
 
 const percentMixSchema = z.record(z.string(), z.number().int().min(0).max(100));
 
@@ -20,7 +20,16 @@ export const generatedQuestionSchema = z.object({
   option_d_rationale: z.string().min(10),
   test_taking_tip: z.string().min(10),
   difficulty: z.enum(['easy', 'medium', 'hard']),
-  cognitive_level: z.enum(['recall', 'application', 'analysis']),
+  cognitive_level: z.enum([
+    'recall',
+    'comprehension',
+    'application',
+    'analysis',
+    'clinical judgment',
+    'ethics',
+    'safety',
+    'prioritization',
+  ]),
   topic: z.string().min(1),
   subtopic: z.string().min(1),
   learning_objective: z.string().min(1),
@@ -72,22 +81,34 @@ Topic:
 Difficulty mix: ${formatMix(parsedInput.difficultyMix)}
 Cognitive level mix: ${formatMix(parsedInput.cognitiveLevelMix)}
 
-Rules:
+Strict alignment and quality rules:
 - Do not copy official exam questions.
 - Do not reproduce copyrighted test-bank content.
 - Generate original educational practice questions only.
-- Match the specific exam track.
-- Do not mix BSW, MSW/LMSW, and LCSW content.
-- Do not mix NCLEX-RN and NCLEX-PN content.
+- Directly align every question to the selected exam_track_id, topic_id, subtopic, and learning objective.
+- Target blueprint_alignment_score must be 90 or higher.
+- Reject internally and regenerate any candidate that is weakly aligned, generic, or off-topic before returning it.
+- Match the exact selected exam track scope and expected reasoning level.
+- Do not mix BSW, MSW/LMSW, and LCSW levels.
+- Do not mix NCLEX-RN and NCLEX-PN levels.
+- Do not create generic healthcare, social work, psychology, nursing, or counseling questions.
+- Target professional exam-level difficulty quality of 80 or higher.
+- Avoid simple recall unless the selected cognitive level mix requires recall.
+- Prefer application, analysis, clinical judgment, ethics, safety, prioritization, and scenario-based reasoning when appropriate.
 - Each question must test one clear concept.
 - Each question must have exactly four answer options.
-- Only one answer can be correct.
-- Distractors must be plausible.
+- There must be one clear best answer only.
+- Distractors must be plausible, exam-track appropriate, and not obviously wrong.
 - Avoid "all of the above" and "none of the above."
+- Do not use duplicate answer choices.
+- Avoid absolute terms such as always, never, only, must, all, and none unless clinically or legally necessary.
+- Avoid double negatives.
+- Avoid vague wording.
 - Avoid duplicate stems.
 - Include detailed rationale for the correct answer.
-- Include explanation for each wrong answer.
+- Include detailed explanation for each incorrect answer.
 - Include a concise test-taking tip.
+- Use the selected subtopic and learning objective explicitly in the reasoning, not as decorative metadata.
 - Return valid JSON only.
 
 Return exactly this JSON shape:
@@ -122,7 +143,7 @@ Return exactly this JSON shape:
     messages: [
       {
         role: 'system',
-        content: 'You are a rigorous exam-prep item writer. Output only valid JSON matching the requested schema.',
+        content: 'You are a rigorous professional exam-prep item writer and quality-control reviewer. Internally reject weak, generic, off-topic, low-difficulty, or poorly aligned items before output. Output only valid JSON matching the requested schema.',
       },
       { role: 'user', content: prompt },
     ],
