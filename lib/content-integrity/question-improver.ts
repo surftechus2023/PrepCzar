@@ -23,6 +23,19 @@ interface ImprovementMetadata {
   subtopicOfficialBlueprintText?: string | null;
   learningObjective: string;
   blueprintReferenceText?: string | null;
+  socialWorkBlueprintItem?: {
+    id: string;
+    exam_level: 'bsw' | 'lmsw_msw' | 'lcsw_clinical';
+    major_content_area: string;
+    percentage_weight?: number | null;
+    competency_section: string;
+    applied_knowledge_statement: string;
+    cognitive_level_guidance?: string | null;
+    official_blueprint_text?: string | null;
+    sample_style_guidance?: string | null;
+  } | null;
+  intendedCognitiveLevel?: string | null;
+  intendedDifficulty?: 'easy' | 'medium' | 'hard' | null;
 }
 
 interface ImproveGeneratedQuestionInput {
@@ -38,8 +51,14 @@ function asQuestion(question: GeneratedQuestion, metadata: ImprovementMetadata):
     exam_track_id: metadata.examTrackId,
     topic_id: metadata.topicId,
     subtopic_id: metadata.subtopicId || null,
-    blueprint_reference_text: metadata.blueprintReferenceText || metadata.subtopicOfficialBlueprintText || metadata.topicOfficialBlueprintText || null,
-    difficulty: question.difficulty,
+    social_work_blueprint_item_id: metadata.socialWorkBlueprintItem?.id || null,
+    blueprint_content_area: metadata.socialWorkBlueprintItem?.major_content_area || null,
+    blueprint_competency_section: metadata.socialWorkBlueprintItem?.competency_section || null,
+    applied_knowledge_statement: metadata.socialWorkBlueprintItem?.applied_knowledge_statement || null,
+    question_writing_guideline: metadata.socialWorkBlueprintItem?.sample_style_guidance || null,
+    intended_cognitive_level: metadata.intendedCognitiveLevel || question.cognitive_level || null,
+    blueprint_reference_text: metadata.blueprintReferenceText || metadata.socialWorkBlueprintItem?.official_blueprint_text || metadata.subtopicOfficialBlueprintText || metadata.topicOfficialBlueprintText || null,
+    difficulty: metadata.intendedDifficulty || question.difficulty,
     question_en: question.question,
     question_es: '',
     question_fr: '',
@@ -61,7 +80,7 @@ function asQuestion(question: GeneratedQuestion, metadata: ImprovementMetadata):
     rationale_fr: '',
     subtopic: question.subtopic || metadata.subtopic,
     learning_objective: question.learning_objective || metadata.learningObjective,
-    cognitive_level: question.cognitive_level,
+    cognitive_level: metadata.intendedCognitiveLevel || question.cognitive_level,
     correct_rationale_en: question.correct_rationale,
     option_a_rationale_en: question.option_a_rationale,
     option_b_rationale_en: question.option_b_rationale,
@@ -126,6 +145,7 @@ export function evaluateGeneratedQuestionIntegrity(
       learning_objective: metadata.learningObjective,
       official_blueprint_text: metadata.subtopicOfficialBlueprintText,
     } : null,
+    socialWorkBlueprintItem: metadata.socialWorkBlueprintItem || null,
     existingQuestions,
   });
 }
@@ -177,8 +197,17 @@ Preserve exactly:
 - Subtopic official blueprint text: ${metadata.subtopicOfficialBlueprintText || 'Not provided'}
 - Learning objective: ${metadata.learningObjective}
 - Blueprint reference text: ${metadata.blueprintReferenceText || 'Not provided'}
-- Intended difficulty: ${question.difficulty}
-- Intended cognitive level: ${question.cognitive_level}
+- Social Work blueprint item id: ${metadata.socialWorkBlueprintItem?.id || 'Not provided'}
+- ASWB exam level: ${metadata.socialWorkBlueprintItem?.exam_level || 'Not provided'}
+- Major content area: ${metadata.socialWorkBlueprintItem?.major_content_area || 'Not provided'}
+- Content weight: ${metadata.socialWorkBlueprintItem?.percentage_weight ?? metadata.topicWeightPercent ?? 'Not provided'}
+- Competency section: ${metadata.socialWorkBlueprintItem?.competency_section || 'Not provided'}
+- Applied knowledge statement: ${metadata.socialWorkBlueprintItem?.applied_knowledge_statement || 'Not provided'}
+- Social Work official blueprint text: ${metadata.socialWorkBlueprintItem?.official_blueprint_text || 'Not provided'}
+- Cognitive level guidance: ${metadata.socialWorkBlueprintItem?.cognitive_level_guidance || 'Not provided'}
+- Question-writing guideline: ${metadata.socialWorkBlueprintItem?.sample_style_guidance || 'Not provided'}
+- Intended difficulty: ${metadata.intendedDifficulty || question.difficulty}
+- Intended cognitive level: ${metadata.intendedCognitiveLevel || question.cognitive_level}
 
 Exam-track-specific rewrite rules:
 ${formatExamTrackRulesForPrompt(metadata.examTrackName)}
@@ -213,6 +242,11 @@ Rewrite requirements:
 - Avoid vague wording, double negatives, and unnecessary absolutes.
 - Include detailed rationales for correct and incorrect options.
 - Include a test-taking tip.
+- For Social Work blueprint items, map the rewritten question to the selected applied knowledge statement and ASWB-style competency section.
+- For BSW, keep foundational recall/application scope unless a higher cognitive level is selected.
+- For LMSW/MSW, use graduate-level application and professional reasoning.
+- For LCSW/Clinical, prefer case-vignette clinical judgment, risk/safety, diagnosis-informed assessment, intervention planning, ethics, confidentiality, boundaries, or mandated-reporting reasoning.
+- Use BEST, FIRST, NEXT, or MOST qualifiers when they improve ASWB-style decision-making.
 
 Return only one JSON object matching the generated question schema.`;
 
@@ -294,7 +328,7 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
   const { checkAndUpdateQuestionIntegrity } = await import('@/lib/content-integrity/question-integrity-checker');
   const { data, error } = await supabaseAdmin
     .from('questions')
-    .select('*, exam_track:exam_tracks(id, name, full_name, slug, official_source_url, official_exam_description), topic:topics(id, title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(id, title, description, learning_objective, official_blueprint_text)')
+    .select('*, exam_track:exam_tracks(id, name, full_name, slug, official_source_url, official_exam_description), topic:topics(id, title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(id, title, description, learning_objective, official_blueprint_text), social_work_blueprint_item:social_work_blueprint_items(id, exam_level, major_content_area, percentage_weight, competency_section, applied_knowledge_statement, cognitive_level_guidance, official_blueprint_text, sample_style_guidance)')
     .eq('id', questionId)
     .single();
 
@@ -304,6 +338,7 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
     exam_track?: NonNullable<QuestionContext['examTrack']>;
     topic?: NonNullable<QuestionContext['topic']>;
     subtopic_record?: QuestionContext['subtopic'];
+    social_work_blueprint_item?: ImprovementMetadata['socialWorkBlueprintItem'];
   };
 
   const attempts = question.improvement_attempts || 0;
@@ -319,6 +354,7 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
     examTrack: question.exam_track,
     topic: question.topic,
     subtopic: question.subtopic_record,
+    socialWorkBlueprintItem: question.social_work_blueprint_item,
     existingQuestions: [],
   });
 
@@ -336,9 +372,21 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
     subtopic: firstText(question.subtopic_record?.title, question.subtopic, question.topic?.title, question.source_topic, 'Selected subtopic'),
     subtopicDescription: question.subtopic_record?.description,
     subtopicOfficialBlueprintText: question.subtopic_record?.official_blueprint_text,
-    learningObjective: firstText(question.learning_objective, question.subtopic_record?.learning_objective, question.topic?.title ? `Apply ${question.topic.title} to the selected exam track.` : null, 'Apply the selected topic to the selected exam track.'),
+    learningObjective: firstText(
+      question.applied_knowledge_statement,
+      question.social_work_blueprint_item?.applied_knowledge_statement,
+      question.learning_objective,
+      question.subtopic_record?.learning_objective,
+      question.topic?.title ? `Apply ${question.topic.title} to the selected exam track.` : null,
+      'Apply the selected topic to the selected exam track.'
+    ),
     blueprintReferenceText: firstText(
       question.blueprint_reference_text,
+      question.social_work_blueprint_item?.official_blueprint_text,
+      question.social_work_blueprint_item?.applied_knowledge_statement,
+      question.applied_knowledge_statement,
+      question.blueprint_competency_section,
+      question.blueprint_content_area,
       question.subtopic_record?.official_blueprint_text,
       question.topic?.official_blueprint_text,
       question.learning_objective,
@@ -350,6 +398,9 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
       question.subtopic,
       question.source_topic
     ),
+    socialWorkBlueprintItem: question.social_work_blueprint_item || null,
+    intendedCognitiveLevel: question.intended_cognitive_level || question.cognitive_level,
+    intendedDifficulty: question.difficulty,
   };
 
   if (!metadata.blueprintReferenceText) {
@@ -389,9 +440,15 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
       cognitive_level: improved.question.cognitive_level,
       subtopic: improved.question.subtopic || metadata.subtopic,
       subtopic_id: metadata.subtopicId || null,
+      social_work_blueprint_item_id: metadata.socialWorkBlueprintItem?.id || null,
+      blueprint_content_area: metadata.socialWorkBlueprintItem?.major_content_area || question.blueprint_content_area || null,
+      blueprint_competency_section: metadata.socialWorkBlueprintItem?.competency_section || question.blueprint_competency_section || null,
+      applied_knowledge_statement: metadata.socialWorkBlueprintItem?.applied_knowledge_statement || metadata.learningObjective || question.applied_knowledge_statement || null,
+      question_writing_guideline: metadata.socialWorkBlueprintItem?.sample_style_guidance || question.question_writing_guideline || null,
+      intended_cognitive_level: metadata.intendedCognitiveLevel || improved.question.cognitive_level,
       learning_objective: improved.question.learning_objective || metadata.learningObjective,
       source_topic: improved.question.source_topic || improved.question.topic,
-      blueprint_reference_text: metadata.blueprintReferenceText || metadata.subtopicOfficialBlueprintText || metadata.topicOfficialBlueprintText || null,
+      blueprint_reference_text: metadata.blueprintReferenceText || metadata.socialWorkBlueprintItem?.official_blueprint_text || metadata.subtopicOfficialBlueprintText || metadata.topicOfficialBlueprintText || null,
       improvement_attempts: nextAttempts,
       auto_improved: true,
       improvement_notes: improvementNotes,

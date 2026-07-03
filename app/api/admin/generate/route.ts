@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
           if (
             checked.result.integrity_status !== 'needs_metadata'
             && (
-              checked.result.blueprint_alignment_score < 80
+              checked.result.blueprint_alignment_score < 90
               || checked.result.difficulty_quality_score < examTrackRules.minimumDifficultyQualityScore
               || checked.result.integrity_score < 85
             )

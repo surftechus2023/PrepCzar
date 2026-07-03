@@ -59,6 +59,16 @@ export const questionGenerationInputSchema = z.object({
   subtopicOfficialBlueprintText: z.string().optional().nullable(),
   learningObjective: z.string().min(5),
   blueprintReferenceText: z.string().optional().nullable(),
+  socialWorkBlueprintItemId: z.string().uuid().optional().nullable(),
+  socialWorkExamLevel: z.enum(['bsw', 'lmsw_msw', 'lcsw_clinical']).optional().nullable(),
+  majorContentArea: z.string().optional().nullable(),
+  percentageWeight: z.number().optional().nullable(),
+  competencySection: z.string().optional().nullable(),
+  appliedKnowledgeStatement: z.string().optional().nullable(),
+  cognitiveLevelGuidance: z.string().optional().nullable(),
+  sampleStyleGuidance: z.string().optional().nullable(),
+  intendedCognitiveLevel: z.string().optional().nullable(),
+  intendedDifficulty: z.enum(['easy', 'medium', 'hard']).optional().nullable(),
   quantity: z.number().int().min(1).max(25),
   difficultyMix: percentMixSchema,
   cognitiveLevelMix: percentMixSchema,
@@ -97,11 +107,38 @@ Topic:
 - learning objective: ${parsedInput.learningObjective}
 - blueprint reference text: ${parsedInput.blueprintReferenceText || parsedInput.subtopicOfficialBlueprintText || parsedInput.topicOfficialBlueprintText || 'Not provided'}
 
+Social Work blueprint item, if selected:
+- blueprint item id: ${parsedInput.socialWorkBlueprintItemId || 'Not provided'}
+- ASWB exam level: ${parsedInput.socialWorkExamLevel || 'Not provided'}
+- major content area: ${parsedInput.majorContentArea || 'Not provided'}
+- content weight: ${parsedInput.percentageWeight ?? parsedInput.topicWeightPercent ?? 'Not provided'}
+- competency section: ${parsedInput.competencySection || 'Not provided'}
+- applied knowledge statement: ${parsedInput.appliedKnowledgeStatement || 'Not provided'}
+- cognitive level guidance: ${parsedInput.cognitiveLevelGuidance || 'Not provided'}
+- sample style guidance: ${parsedInput.sampleStyleGuidance || 'Not provided'}
+- intended cognitive level: ${parsedInput.intendedCognitiveLevel || 'Use cognitive mix'}
+- intended difficulty: ${parsedInput.intendedDifficulty || 'Use difficulty mix'}
+
 Difficulty mix: ${formatMix(parsedInput.difficultyMix)}
 Cognitive level mix: ${formatMix(parsedInput.cognitiveLevelMix)}
 
 Exam-track-specific generation rules:
 ${formatExamTrackRulesForPrompt(parsedInput.examTrackName)}
+
+ASWB-style Social Work rules when a Social Work blueprint item is provided:
+- Treat the selected applied knowledge statement as the source of truth.
+- Every Social Work question must directly map to that one applied knowledge statement.
+- Use the selected major content area, competency section, percentage weight, cognitive guidance, and official blueprint text.
+- Questions may use 3 or 4 answer options in ASWB style, but this application stores four options, so return exactly four high-quality options.
+- Use simple wording, one clear best answer, and no trick wording.
+- Use qualifiers like BEST, FIRST, NEXT, and MOST where appropriate.
+- Never use "all of the above," "none of the above," or "both A and B."
+- BSW/Bachelors items should use foundational social work knowledge with more recall and application.
+- LMSW/MSW/Masters items should use graduate-level application, reasoning, assessment, planning, intervention, ethics, supervision, community practice, and professional judgment.
+- LCSW/Clinical items should emphasize vignette-based reasoning, clinical judgment, assessment, DSM-informed diagnosis, risk assessment, treatment planning, intervention, therapeutic relationship, boundaries, confidentiality, mandated reporting, supervision, and ethical clinical judgment.
+- For LCSW/Clinical, rewrite "What is", "Define", or "Which disorder" stems into clinical scenarios unless recall is explicitly selected.
+- Rationale style must explain why the correct answer is best and why each distractor is less appropriate.
+- Distractors must be plausible at the selected Social Work exam level and must not shift to another scope of practice.
 
 Strict alignment and quality rules:
 - Do not copy official exam questions.

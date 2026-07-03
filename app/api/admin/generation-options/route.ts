@@ -3,6 +3,11 @@ import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
 
 export const dynamic = 'force-dynamic';
 
+function isMissingSchemaObject(message: string | undefined) {
+  const value = (message || '').toLowerCase();
+  return value.includes('schema cache') || value.includes('could not find') || value.includes('relation') || value.includes('column');
+}
+
 export async function GET(req: NextRequest) {
   try {
     const adminUser = await requireAdmin(req);
@@ -45,14 +50,26 @@ export async function GET(req: NextRequest) {
           .order('display_order')
       : Promise.resolve({ data: [], error: null });
 
-    const [categoriesRes, tracksRes, topicsRes, subtopicsRes] = await Promise.all([
+    const blueprintItemsQuery = trackId
+      ? supabaseAdmin
+          .from('social_work_blueprint_items')
+          .select('*')
+          .eq('exam_track_id', trackId)
+          .order('display_order')
+      : Promise.resolve({ data: [], error: null });
+
+    const [categoriesRes, tracksRes, topicsRes, subtopicsRes, blueprintItemsRes] = await Promise.all([
       categoriesQuery,
       tracksQuery,
       topicsQuery,
       subtopicsQuery,
+      blueprintItemsQuery,
     ]);
 
-    const error = categoriesRes.error || tracksRes.error || topicsRes.error || subtopicsRes.error;
+    const blueprintItemsError = blueprintItemsRes.error && !isMissingSchemaObject(blueprintItemsRes.error.message)
+      ? blueprintItemsRes.error
+      : null;
+    const error = categoriesRes.error || tracksRes.error || topicsRes.error || subtopicsRes.error || blueprintItemsError;
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
@@ -62,6 +79,9 @@ export async function GET(req: NextRequest) {
       tracks: tracksRes.data || [],
       topics: topicsRes.data || [],
       subtopics: subtopicsRes.data || [],
+      socialWorkBlueprintItems: topicId
+        ? (blueprintItemsRes.data || []).filter((item: any) => !item.topic_id || item.topic_id === topicId)
+        : blueprintItemsRes.data || [],
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

@@ -193,6 +193,54 @@ export interface Database {
           display_order?: number;
         };
       };
+      social_work_blueprint_items: {
+        Row: {
+          id: string;
+          exam_track_id: string;
+          topic_id: string | null;
+          subtopic_id: string | null;
+          exam_level: 'bsw' | 'lmsw_msw' | 'lcsw_clinical';
+          major_content_area: string;
+          percentage_weight: number | null;
+          competency_section: string;
+          applied_knowledge_statement: string;
+          cognitive_level_guidance: string | null;
+          official_blueprint_text: string;
+          sample_style_guidance: string | null;
+          display_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          exam_track_id: string;
+          topic_id?: string | null;
+          subtopic_id?: string | null;
+          exam_level: 'bsw' | 'lmsw_msw' | 'lcsw_clinical';
+          major_content_area: string;
+          percentage_weight?: number | null;
+          competency_section: string;
+          applied_knowledge_statement: string;
+          cognitive_level_guidance?: string | null;
+          official_blueprint_text?: string;
+          sample_style_guidance?: string | null;
+          display_order?: number;
+        };
+        Update: {
+          id?: string;
+          exam_track_id?: string;
+          topic_id?: string | null;
+          subtopic_id?: string | null;
+          exam_level?: 'bsw' | 'lmsw_msw' | 'lcsw_clinical';
+          major_content_area?: string;
+          percentage_weight?: number | null;
+          competency_section?: string;
+          applied_knowledge_statement?: string;
+          cognitive_level_guidance?: string | null;
+          official_blueprint_text?: string;
+          sample_style_guidance?: string | null;
+          display_order?: number;
+        };
+      };
       questions: {
         Row: {
           id: string;
@@ -200,6 +248,12 @@ export interface Database {
           exam_track_id: string | null;
           topic_id: string | null;
           subtopic_id: string | null;
+          social_work_blueprint_item_id: string | null;
+          blueprint_content_area: string | null;
+          blueprint_competency_section: string | null;
+          applied_knowledge_statement: string | null;
+          question_writing_guideline: string | null;
+          intended_cognitive_level: string | null;
           blueprint_reference_text: string | null;
           difficulty: 'easy' | 'medium' | 'hard';
           question_en: string;
@@ -265,6 +319,12 @@ export interface Database {
           exam_track_id?: string | null;
           topic_id?: string | null;
           subtopic_id?: string | null;
+          social_work_blueprint_item_id?: string | null;
+          blueprint_content_area?: string | null;
+          blueprint_competency_section?: string | null;
+          applied_knowledge_statement?: string | null;
+          question_writing_guideline?: string | null;
+          intended_cognitive_level?: string | null;
           blueprint_reference_text?: string | null;
           difficulty?: 'easy' | 'medium' | 'hard';
           question_en: string;
@@ -329,6 +389,12 @@ export interface Database {
           exam_track_id?: string | null;
           topic_id?: string | null;
           subtopic_id?: string | null;
+          social_work_blueprint_item_id?: string | null;
+          blueprint_content_area?: string | null;
+          blueprint_competency_section?: string | null;
+          applied_knowledge_statement?: string | null;
+          question_writing_guideline?: string | null;
+          intended_cognitive_level?: string | null;
           blueprint_reference_text?: string | null;
           difficulty?: 'easy' | 'medium' | 'hard';
           question_en?: string;
@@ -760,6 +826,7 @@ export type ExamTrack = Database['public']['Tables']['exam_tracks']['Row'];
 export type Exam = Database['public']['Tables']['exams']['Row'];
 export type Topic = Database['public']['Tables']['topics']['Row'];
 export type Subtopic = Database['public']['Tables']['subtopics']['Row'];
+export type SocialWorkBlueprintItem = Database['public']['Tables']['social_work_blueprint_items']['Row'];
 export type Question = Database['public']['Tables']['questions']['Row'];
 export type Flashcard = Database['public']['Tables']['flashcards']['Row'];
 export type CaseVignette = Database['public']['Tables']['case_vignettes']['Row'];

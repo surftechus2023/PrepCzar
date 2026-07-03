@@ -35,8 +35,11 @@ const requestSchema = z.object({
   examTrackId: z.string().uuid(),
   topicId: z.string().uuid(),
   subtopicId: z.string().uuid().optional().nullable(),
+  socialWorkBlueprintItemId: z.string().uuid().optional().nullable(),
   subtopic: z.string().min(2),
   learningObjective: z.string().min(5),
+  intendedCognitiveLevel: z.string().optional().nullable(),
+  intendedDifficulty: z.enum(['easy', 'medium', 'hard']).optional().nullable(),
   quantity: z.number().int().min(1).max(100),
   difficultyMix: difficultyMixSchema,
   cognitiveLevelMix: cognitiveLevelMixSchema,
@@ -96,6 +99,7 @@ export async function POST(req: NextRequest) {
     const examName = trackRes.data.full_name || trackRes.data.name;
     const examTrackRules = getExamTrackRules(examName);
     let selectedSubtopic: any = null;
+    let selectedBlueprintItem: any = null;
     if (body.subtopicId) {
       const { data: subtopicData, error: subtopicError } = await supabaseAdmin
         .from('subtopics')
@@ -107,9 +111,28 @@ export async function POST(req: NextRequest) {
       if (subtopicError) throw new Error(subtopicError.message);
       selectedSubtopic = subtopicData;
     }
-    const effectiveSubtopic = selectedSubtopic?.title || body.subtopic;
-    const effectiveLearningObjective = selectedSubtopic?.learning_objective || body.learningObjective;
+    if (body.socialWorkBlueprintItemId) {
+      const { data: blueprintItemData, error: blueprintItemError } = await supabaseAdmin
+        .from('social_work_blueprint_items')
+        .select('*')
+        .eq('id', body.socialWorkBlueprintItemId)
+        .eq('exam_track_id', body.examTrackId)
+        .maybeSingle();
+
+      if (blueprintItemError) throw new Error(blueprintItemError.message);
+      if (!blueprintItemData) {
+        return NextResponse.json({ error: 'Selected Social Work blueprint item was not found for this exam track.' }, { status: 404 });
+      }
+      selectedBlueprintItem = blueprintItemData;
+    }
+
+    const effectiveSubtopic = selectedSubtopic?.title || selectedBlueprintItem?.competency_section || body.subtopic;
+    const effectiveLearningObjective = selectedBlueprintItem?.applied_knowledge_statement || selectedSubtopic?.learning_objective || body.learningObjective;
     const blueprintReferenceText = [
+      selectedBlueprintItem?.official_blueprint_text,
+      selectedBlueprintItem?.applied_knowledge_statement,
+      selectedBlueprintItem?.competency_section,
+      selectedBlueprintItem?.major_content_area,
       selectedSubtopic?.official_blueprint_text,
       topicRes.data.official_blueprint_text,
       effectiveLearningObjective,
@@ -174,6 +197,16 @@ export async function POST(req: NextRequest) {
         subtopicOfficialBlueprintText: selectedSubtopic?.official_blueprint_text,
         learningObjective: effectiveLearningObjective,
         blueprintReferenceText,
+        socialWorkBlueprintItemId: selectedBlueprintItem?.id || null,
+        socialWorkExamLevel: selectedBlueprintItem?.exam_level || null,
+        majorContentArea: selectedBlueprintItem?.major_content_area || null,
+        percentageWeight: selectedBlueprintItem?.percentage_weight ?? null,
+        competencySection: selectedBlueprintItem?.competency_section || null,
+        appliedKnowledgeStatement: selectedBlueprintItem?.applied_knowledge_statement || null,
+        cognitiveLevelGuidance: selectedBlueprintItem?.cognitive_level_guidance || null,
+        sampleStyleGuidance: selectedBlueprintItem?.sample_style_guidance || null,
+        intendedCognitiveLevel: body.intendedCognitiveLevel || null,
+        intendedDifficulty: body.intendedDifficulty || null,
         quantity,
         difficultyMix: body.difficultyMix,
         cognitiveLevelMix: body.cognitiveLevelMix,
@@ -232,6 +265,9 @@ export async function POST(req: NextRequest) {
             subtopicOfficialBlueprintText: selectedSubtopic?.official_blueprint_text,
             learningObjective: effectiveLearningObjective,
             blueprintReferenceText,
+            socialWorkBlueprintItem: selectedBlueprintItem,
+            intendedCognitiveLevel: body.intendedCognitiveLevel || null,
+            intendedDifficulty: body.intendedDifficulty || null,
           },
           existingQuestions.map((existing, index) => ({
             id: `existing-${index}`,
@@ -248,7 +284,7 @@ export async function POST(req: NextRequest) {
           integrity.integrity_status !== 'needs_metadata'
           && (
             (examTrackRules.preferScenarioBased && isRecallOnlyStem(question.question))
-            || integrity.blueprint_alignment_score < 80
+            || integrity.blueprint_alignment_score < 90
             || integrity.difficulty_quality_score < examTrackRules.minimumDifficultyQualityScore
             || integrity.integrity_score < 85
           )
@@ -271,6 +307,9 @@ export async function POST(req: NextRequest) {
               subtopicOfficialBlueprintText: selectedSubtopic?.official_blueprint_text,
               learningObjective: effectiveLearningObjective,
               blueprintReferenceText,
+              socialWorkBlueprintItem: selectedBlueprintItem,
+              intendedCognitiveLevel: body.intendedCognitiveLevel || null,
+              intendedDifficulty: body.intendedDifficulty || null,
             },
             integrityResult: integrity,
           });
@@ -295,6 +334,12 @@ export async function POST(req: NextRequest) {
           exam_track_id: body.examTrackId,
           topic_id: body.topicId,
           subtopic_id: body.subtopicId || null,
+          social_work_blueprint_item_id: selectedBlueprintItem?.id || null,
+          blueprint_content_area: selectedBlueprintItem?.major_content_area || null,
+          blueprint_competency_section: selectedBlueprintItem?.competency_section || null,
+          applied_knowledge_statement: selectedBlueprintItem?.applied_knowledge_statement || null,
+          question_writing_guideline: selectedBlueprintItem?.sample_style_guidance || null,
+          intended_cognitive_level: body.intendedCognitiveLevel || null,
           blueprint_reference_text: blueprintReferenceText || null,
           question_en: question.question,
           option_a_en: question.option_a,

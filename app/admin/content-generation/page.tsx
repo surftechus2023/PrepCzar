@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { authenticatedFetch } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import type { ExamCategory, ExamTrack, Subtopic, Topic } from '@/types/database';
+import type { ExamCategory, ExamTrack, SocialWorkBlueprintItem, Subtopic, Topic } from '@/types/database';
 
 interface GenerationResult {
   batchId: string;
@@ -26,12 +26,16 @@ export default function ContentGenerationPage() {
   const [tracks, setTracks] = useState<ExamTrack[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [subtopics, setSubtopics] = useState<Subtopic[]>([]);
+  const [socialWorkBlueprintItems, setSocialWorkBlueprintItems] = useState<SocialWorkBlueprintItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedTrack, setSelectedTrack] = useState('');
   const [selectedTopic, setSelectedTopic] = useState('');
   const [selectedSubtopic, setSelectedSubtopic] = useState('');
+  const [selectedBlueprintItem, setSelectedBlueprintItem] = useState('');
   const [subtopic, setSubtopic] = useState('');
   const [learningObjective, setLearningObjective] = useState('');
+  const [intendedCognitiveLevel, setIntendedCognitiveLevel] = useState('application');
+  const [intendedDifficulty, setIntendedDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [quantity, setQuantity] = useState(25);
   const [difficultyMix, setDifficultyMix] = useState({ easy: 30, medium: 50, hard: 20 });
   const [cognitiveLevelMix, setCognitiveLevelMix] = useState({ recall: 20, application: 40, analysis: 40 });
@@ -82,18 +86,24 @@ export default function ContentGenerationPage() {
       setSelectedTrack('');
       setTopics([]);
       setSelectedTopic('');
+      setSocialWorkBlueprintItems([]);
+      setSelectedBlueprintItem('');
     }
 
     if (params.trackId) {
       setTopics(data.topics || []);
+      setSocialWorkBlueprintItems(data.socialWorkBlueprintItems || []);
       setSelectedTopic('');
       setSubtopics([]);
       setSelectedSubtopic('');
+      setSelectedBlueprintItem('');
     }
 
     if (params.topicId) {
       setSubtopics(data.subtopics || []);
+      setSocialWorkBlueprintItems(data.socialWorkBlueprintItems || []);
       setSelectedSubtopic('');
+      setSelectedBlueprintItem('');
     }
   }
 
@@ -121,8 +131,11 @@ export default function ContentGenerationPage() {
           examTrackId: selectedTrack,
           topicId: selectedTopic,
           subtopicId: selectedSubtopic || null,
+          socialWorkBlueprintItemId: selectedBlueprintItem || null,
           subtopic,
           learningObjective,
+          intendedCognitiveLevel,
+          intendedDifficulty,
           quantity,
           difficultyMix,
           cognitiveLevelMix,
@@ -213,9 +226,60 @@ export default function ContentGenerationPage() {
               </div>
             </div>
 
+            {socialWorkBlueprintItems.length > 0 && (
+              <div>
+                <Label>Social Work Applied Knowledge Statement</Label>
+                <select
+                  value={selectedBlueprintItem}
+                  onChange={(event) => {
+                    const blueprintItemId = event.target.value;
+                    const selected = socialWorkBlueprintItems.find((item) => item.id === blueprintItemId);
+                    setSelectedBlueprintItem(blueprintItemId);
+                    if (selected) {
+                      setSelectedSubtopic(selected.subtopic_id || selectedSubtopic);
+                      setSubtopic(selected.competency_section);
+                      setLearningObjective(selected.applied_knowledge_statement);
+                    }
+                  }}
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">Use topic/subtopic metadata</option>
+                  {socialWorkBlueprintItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.major_content_area} - {item.competency_section} ({item.percentage_weight ?? 'no'}%)
+                    </option>
+                  ))}
+                </select>
+                {selectedBlueprintItem && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {socialWorkBlueprintItems.find((item) => item.id === selectedBlueprintItem)?.applied_knowledge_statement}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div>
               <Label htmlFor="learning-objective">Learning Objective</Label>
               <Textarea id="learning-objective" value={learningObjective} onChange={(event) => setLearningObjective(event.target.value)} placeholder="Students can identify the safest first intervention in..." />
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <Label>Intended Cognitive Level</Label>
+                <select value={intendedCognitiveLevel} onChange={(event) => setIntendedCognitiveLevel(event.target.value)} className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
+                  {['recall', 'comprehension', 'application', 'analysis', 'clinical judgment', 'ethics', 'safety', 'prioritization'].map((level) => (
+                    <option key={level} value={level}>{level}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label>Intended Difficulty</Label>
+                <select value={intendedDifficulty} onChange={(event) => setIntendedDifficulty(event.target.value as 'easy' | 'medium' | 'hard')} className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
+                  {(['easy', 'medium', 'hard'] as const).map((level) => (
+                    <option key={level} value={level}>{level}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">

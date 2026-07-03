@@ -8,7 +8,7 @@ function isMissingColumn(errorMessage: string | undefined) {
   return message.includes('column') || message.includes('schema cache');
 }
 
-const QUESTION_SELECT = '*, exam_track:exam_tracks(name, slug, official_source_url, official_exam_description), topic:topics(title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(title, description, learning_objective, official_blueprint_text)';
+const QUESTION_SELECT = '*, exam_track:exam_tracks(name, slug, official_source_url, official_exam_description), topic:topics(title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(title, description, learning_objective, official_blueprint_text), social_work_blueprint_item:social_work_blueprint_items(id, exam_level, major_content_area, percentage_weight, competency_section, applied_knowledge_statement, cognitive_level_guidance, official_blueprint_text, sample_style_guidance)';
 
 export async function GET(req: NextRequest) {
   try {

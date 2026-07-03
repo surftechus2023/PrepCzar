@@ -37,6 +37,17 @@ export interface QuestionContext {
     learning_objective?: string | null;
     official_blueprint_text?: string | null;
   } | null;
+  socialWorkBlueprintItem?: {
+    id: string;
+    exam_level?: 'bsw' | 'lmsw_msw' | 'lcsw_clinical' | null;
+    major_content_area?: string | null;
+    percentage_weight?: number | null;
+    competency_section?: string | null;
+    applied_knowledge_statement?: string | null;
+    cognitive_level_guidance?: string | null;
+    official_blueprint_text?: string | null;
+    sample_style_guidance?: string | null;
+  } | null;
   existingQuestions?: Array<{ id: string; question_en: string | null; duplicate_hash: string | null }>;
 }
 
@@ -57,10 +68,17 @@ export interface QuestionIntegrityResult {
 
 export function getBlueprintReferenceText(question: Question, context: QuestionContext = {}) {
   return [
+    context.socialWorkBlueprintItem?.official_blueprint_text,
+    context.socialWorkBlueprintItem?.applied_knowledge_statement,
+    context.socialWorkBlueprintItem?.competency_section,
+    context.socialWorkBlueprintItem?.major_content_area,
     context.topic?.official_blueprint_text,
     context.subtopic?.official_blueprint_text,
     context.subtopic?.learning_objective,
     question.blueprint_reference_text,
+    question.applied_knowledge_statement,
+    question.blueprint_competency_section,
+    question.blueprint_content_area,
     question.learning_objective,
     context.subtopic?.description,
     context.subtopic?.title,
@@ -221,13 +239,22 @@ function evaluateBlueprintAlignment(question: Question, context: QuestionContext
     return { score: 0, hasReliableBlueprintMetadata };
   }
 
-  const scoreParts = [
-    { text: officialBlueprintText, weight: 45 },
-    { text: context.subtopic?.title || question.subtopic || '', weight: 15 },
-    { text: context.subtopic?.description || '', weight: 10 },
-    { text: context.subtopic?.learning_objective || question.learning_objective || '', weight: 20 },
-    { text: `${context.topic?.title || ''} ${context.topic?.description || ''}`, weight: 10 },
-  ];
+  const socialWorkItem = context.socialWorkBlueprintItem;
+  const scoreParts = socialWorkItem
+    ? [
+        { text: socialWorkItem.applied_knowledge_statement || question.applied_knowledge_statement || question.learning_objective || '', weight: 45 },
+        { text: socialWorkItem.official_blueprint_text || question.blueprint_reference_text || '', weight: 20 },
+        { text: socialWorkItem.competency_section || question.blueprint_competency_section || '', weight: 15 },
+        { text: socialWorkItem.major_content_area || question.blueprint_content_area || '', weight: 10 },
+        { text: `${context.topic?.title || ''} ${context.subtopic?.title || question.subtopic || ''}`, weight: 10 },
+      ]
+    : [
+        { text: officialBlueprintText, weight: 45 },
+        { text: context.subtopic?.title || question.subtopic || '', weight: 15 },
+        { text: context.subtopic?.description || '', weight: 10 },
+        { text: context.subtopic?.learning_objective || question.learning_objective || '', weight: 20 },
+        { text: `${context.topic?.title || ''} ${context.topic?.description || ''}`, weight: 10 },
+      ];
 
   let availableWeight = 0;
   let score = 0;
@@ -361,7 +388,9 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
   if (!blueprintAlignment.hasReliableBlueprintMetadata) {
     notes.push('Blueprint metadata was missing, so alignment could not be reliably scored.');
   } else if (blueprintAlignmentScore < 90) {
-    notes.push('Question is below the 90+ blueprint alignment target and should be improved before human review.');
+    notes.push(context.socialWorkBlueprintItem
+      ? 'Question is below the 90+ blueprint alignment target for the selected applied knowledge statement and should be improved before human review.'
+      : 'Question is below the 90+ blueprint alignment target and should be improved before human review.');
   }
   if (difficultyQualityScore < 80) notes.push('Question is below the 80+ professional difficulty quality target and should be improved.');
   if (!cognitiveLevelMatches(question, cognitiveLevelDetected)) notes.push('Detected cognitive level does not clearly match the intended cognitive level.');
@@ -386,9 +415,9 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
   if (!blueprintAlignment.hasReliableBlueprintMetadata) status = 'needs_metadata';
   else if (plagiarismRiskScore > 70) status = 'failed';
   else if (blueprintAlignmentScore < 70) status = 'failed';
-  else if (blueprintAlignmentScore < 80 || difficultyQualityScore < rules.minimumDifficultyQualityScore) status = 'needs_improvement';
+  else if (blueprintAlignmentScore < 90 || difficultyQualityScore < rules.minimumDifficultyQualityScore) status = 'needs_improvement';
   else if (integrityScore < 75) status = 'needs_improvement';
-  else if (integrityScore < 80 || blueprintAlignmentScore < 90) status = 'needs_review';
+  else if (integrityScore < 80) status = 'needs_review';
   if (biasFlags.length && status === 'passed') status = 'needs_review';
 
   return {
@@ -410,7 +439,7 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
 export async function checkAndUpdateQuestionIntegrity(supabaseAdmin: SupabaseClient, questionId: string) {
   const { data: question, error: questionError } = await supabaseAdmin
     .from('questions')
-    .select('*, exam_track:exam_tracks(id, name, full_name, slug, official_source_url, official_exam_description), topic:topics(id, title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(id, title, description, learning_objective, official_blueprint_text)')
+    .select('*, exam_track:exam_tracks(id, name, full_name, slug, official_source_url, official_exam_description), topic:topics(id, title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(id, title, description, learning_objective, official_blueprint_text), social_work_blueprint_item:social_work_blueprint_items(id, exam_level, major_content_area, percentage_weight, competency_section, applied_knowledge_statement, cognitive_level_guidance, official_blueprint_text, sample_style_guidance)')
     .eq('id', questionId)
     .single();
 
@@ -422,6 +451,7 @@ export async function checkAndUpdateQuestionIntegrity(supabaseAdmin: SupabaseCli
     exam_track?: QuestionContext['examTrack'];
     topic?: QuestionContext['topic'];
     subtopic_record?: QuestionContext['subtopic'];
+    social_work_blueprint_item?: QuestionContext['socialWorkBlueprintItem'];
   };
 
   const { data: existing, error: existingError } = await supabaseAdmin
@@ -436,6 +466,7 @@ export async function checkAndUpdateQuestionIntegrity(supabaseAdmin: SupabaseCli
     examTrack: typedQuestion.exam_track,
     topic: typedQuestion.topic,
     subtopic: typedQuestion.subtopic_record,
+    socialWorkBlueprintItem: typedQuestion.social_work_blueprint_item,
     existingQuestions: (existing || []) as QuestionContext['existingQuestions'],
   });
 
@@ -457,7 +488,7 @@ export async function checkAndUpdateQuestionIntegrity(supabaseAdmin: SupabaseCli
       duplicate_hash: typedQuestion.duplicate_hash || result.duplicate_hash,
     })
     .eq('id', questionId)
-    .select('*, exam_track:exam_tracks(name, slug, official_source_url, official_exam_description), topic:topics(title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(title, description, learning_objective, official_blueprint_text)')
+    .select('*, exam_track:exam_tracks(name, slug, official_source_url, official_exam_description), topic:topics(title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(title, description, learning_objective, official_blueprint_text), social_work_blueprint_item:social_work_blueprint_items(id, exam_level, major_content_area, percentage_weight, competency_section, applied_knowledge_statement, cognitive_level_guidance, official_blueprint_text, sample_style_guidance)')
     .single();
 
   if (updateError) throw new Error(updateError.message);

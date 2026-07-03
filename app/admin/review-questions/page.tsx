@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { authenticatedFetch } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import type { ExamTrack, Question, Topic } from '@/types/database';
+import type { ExamTrack, Question, SocialWorkBlueprintItem, Topic } from '@/types/database';
 
 interface ReviewQuestion extends Question {
   exam_track?: Pick<ExamTrack, 'name' | 'slug' | 'official_source_url' | 'official_exam_description'>;
@@ -22,6 +22,18 @@ interface ReviewQuestion extends Question {
     learning_objective?: string | null;
     official_blueprint_text?: string | null;
   } | null;
+  social_work_blueprint_item?: Pick<
+    SocialWorkBlueprintItem,
+    | 'id'
+    | 'exam_level'
+    | 'major_content_area'
+    | 'percentage_weight'
+    | 'competency_section'
+    | 'applied_knowledge_statement'
+    | 'cognitive_level_guidance'
+    | 'official_blueprint_text'
+    | 'sample_style_guidance'
+  > | null;
 }
 
 type EditState = Pick<
@@ -326,12 +338,19 @@ export default function ReviewQuestionsPage() {
                       </div>
                       <Collapsible className="rounded-md border bg-muted/20 p-4 text-sm">
                         <CollapsibleTrigger className="font-medium text-left">
-                          Blueprint context used for integrity check
+                          Blueprint context used for generation and integrity check
                         </CollapsibleTrigger>
                         <CollapsibleContent className="mt-3 space-y-2 text-muted-foreground">
                           <p><span className="font-medium text-foreground">Exam track:</span> {(question.exam_track as any)?.name || 'Unknown'}</p>
                           <p><span className="font-medium text-foreground">Official source URL:</span> {(question.exam_track as any)?.official_source_url || 'Not provided'}</p>
                           <p><span className="font-medium text-foreground">Exam description:</span> {(question.exam_track as any)?.official_exam_description || 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">ASWB exam level:</span> {question.social_work_blueprint_item?.exam_level || 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">Major content area:</span> {question.blueprint_content_area || question.social_work_blueprint_item?.major_content_area || 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">Weight:</span> {question.social_work_blueprint_item?.percentage_weight ?? (question.topic as any)?.official_weight_percent ?? 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">Competency section:</span> {question.blueprint_competency_section || question.social_work_blueprint_item?.competency_section || 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">Applied knowledge statement:</span> {question.applied_knowledge_statement || question.social_work_blueprint_item?.applied_knowledge_statement || 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">Cognitive level target:</span> {question.intended_cognitive_level || question.cognitive_level || question.social_work_blueprint_item?.cognitive_level_guidance || 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">Question-writing guideline:</span> {question.question_writing_guideline || question.social_work_blueprint_item?.sample_style_guidance || 'Not provided'}</p>
                           <p><span className="font-medium text-foreground">Topic:</span> {(question.topic as any)?.title || 'Unknown'}</p>
                           <p><span className="font-medium text-foreground">Topic description:</span> {(question.topic as any)?.description || 'Not provided'}</p>
                           <p><span className="font-medium text-foreground">Topic blueprint text:</span> {(question.topic as any)?.official_blueprint_text || 'Not provided'}</p>
@@ -343,7 +362,7 @@ export default function ReviewQuestionsPage() {
                           <p><span className="font-medium text-foreground">Question learning objective:</span> {question.learning_objective || 'Not provided'}</p>
                           <div>
                             <p className="font-medium text-foreground">Blueprint reference text</p>
-                            <p className="whitespace-pre-wrap">{question.blueprint_reference_text || 'Not provided'}</p>
+                            <p className="whitespace-pre-wrap">{question.blueprint_reference_text || question.social_work_blueprint_item?.official_blueprint_text || 'Not provided'}</p>
                           </div>
                         </CollapsibleContent>
                       </Collapsible>
@@ -359,7 +378,7 @@ export default function ReviewQuestionsPage() {
                           <p><span className="font-medium">Difficulty quality:</span> {question.difficulty_quality_score ?? 0}</p>
                           <p><span className="font-medium">Intended difficulty:</span> {question.difficulty}</p>
                           <p><span className="font-medium">Predicted difficulty:</span> {question.predicted_difficulty || 'Not checked'}</p>
-                          <p><span className="font-medium">Intended cognitive level:</span> {question.cognitive_level || 'Not provided'}</p>
+                          <p><span className="font-medium">Intended cognitive level:</span> {question.intended_cognitive_level || question.cognitive_level || 'Not provided'}</p>
                           <p><span className="font-medium">Detected cognitive level:</span> {question.cognitive_level_detected || 'Not checked'}</p>
                           <p><span className="font-medium">Plagiarism risk:</span> {question.plagiarism_risk_score ?? 0}</p>
                           <p><span className="font-medium">Improvement attempts:</span> {question.improvement_attempts ?? 0}/2</p>
