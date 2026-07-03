@@ -79,9 +79,7 @@ export async function GET(req: NextRequest) {
       tracks: tracksRes.data || [],
       topics: topicsRes.data || [],
       subtopics: subtopicsRes.data || [],
-      socialWorkBlueprintItems: topicId
-        ? (blueprintItemsRes.data || []).filter((item: any) => !item.topic_id || item.topic_id === topicId)
-        : blueprintItemsRes.data || [],
+      socialWorkBlueprintItems: blueprintItemsRes.data || [],
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

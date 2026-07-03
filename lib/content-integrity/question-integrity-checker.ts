@@ -167,6 +167,70 @@ function sameNormalizedText(left: string | null | undefined, right: string | nul
   return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight);
 }
 
+function socialWorkTopicHint(question: Question, context: QuestionContext) {
+  return normalizeText([
+    question.blueprint_content_area,
+    question.blueprint_competency_section,
+    question.applied_knowledge_statement,
+    question.learning_objective,
+    question.subtopic,
+    question.source_topic,
+    context.topic?.title,
+    context.topic?.description,
+  ].join(' '));
+}
+
+function majorAreaPreference(metadataText: string) {
+  if (/\b(ethic|law|legal|confidential|privacy|consent|boundary|mandatory|mandated|values)\b/.test(metadataText)) {
+    return 'I. VALUES AND ETHICS';
+  }
+  if (/\b(assessment|diagnos|psychopatholog|dsm|mental|development|biopsychosocial|risk|symptom)\b/.test(metadataText)) {
+    return 'II. ASSESSMENT AND PLANNING';
+  }
+  if (/\b(intervention|therapy|psychotherapy|treatment|practice|case management|referral|crisis|discharge)\b/.test(metadataText)) {
+    return 'III. INTERVENTION AND PRACTICE';
+  }
+  return '';
+}
+
+function pickBestSocialWorkBlueprintItem(
+  question: Question,
+  context: QuestionContext,
+  items: NonNullable<QuestionContext['socialWorkBlueprintItem']>[]
+) {
+  if (!items.length) return null;
+
+  const metadataText = socialWorkTopicHint(question, context);
+  const preferredMajorArea = majorAreaPreference(metadataText);
+  let bestItem: NonNullable<QuestionContext['socialWorkBlueprintItem']> | null = null;
+  let bestScore = -1;
+
+  items.forEach((item) => {
+    const itemText = [
+      item.major_content_area,
+      item.competency_section,
+      item.applied_knowledge_statement,
+      item.official_blueprint_text,
+    ].join(' ');
+    let score = similarity(metadataText, itemText) * 100;
+
+    if (preferredMajorArea && item.major_content_area === preferredMajorArea) score += 35;
+    if (metadataText.includes('psychopatholog') && /diagnostic|mental health|brain/.test(normalizeText(item.applied_knowledge_statement))) score += 40;
+    if (metadataText.includes('diagnos') && /diagnostic|dsm|mental health|brain/.test(normalizeText(item.applied_knowledge_statement))) score += 35;
+    if (metadataText.includes('human development') && /development|lifespan/.test(normalizeText(item.applied_knowledge_statement))) score += 35;
+    if (metadataText.includes('clinical assessment') && /assessment|interview|mental status|risk/.test(normalizeText(item.applied_knowledge_statement))) score += 30;
+    if (metadataText.includes('psychotherapy') && /intervention|therapy|evidence/.test(normalizeText(item.applied_knowledge_statement))) score += 35;
+    if (metadataText.includes('case management') && /case management|community resources|service/.test(normalizeText(item.applied_knowledge_statement))) score += 35;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestItem = item;
+    }
+  });
+
+  return bestScore >= 20 ? bestItem : null;
+}
+
 export function createQuestionDuplicateHash(questionText: string | null | undefined, examTrackId: string | null | undefined) {
   return createHash('sha256')
     .update(`${examTrackId || 'unknown'}:${normalizeText(questionText)}`)
@@ -496,6 +560,27 @@ export async function checkAndUpdateQuestionIntegrity(supabaseAdmin: SupabaseCli
     social_work_blueprint_item?: QuestionContext['socialWorkBlueprintItem'];
   };
 
+  let selectedSocialWorkBlueprintItem = typedQuestion.social_work_blueprint_item || null;
+  const trackSlug = normalizeText(`${typedQuestion.exam_track?.slug || ''} ${typedQuestion.exam_track?.name || ''} ${typedQuestion.exam_track?.full_name || ''}`);
+  if (!selectedSocialWorkBlueprintItem && /\b(bsw|msw|lmsw|lcsw|social work|clinical social)\b/.test(trackSlug)) {
+    const { data: blueprintItems, error: blueprintItemsError } = await supabaseAdmin
+      .from('social_work_blueprint_items')
+      .select('id, exam_level, major_content_area, percentage_weight, competency_section, applied_knowledge_statement, cognitive_level_guidance, official_blueprint_text, sample_style_guidance')
+      .eq('exam_track_id', typedQuestion.exam_track_id)
+      .limit(500);
+
+    if (blueprintItemsError) throw new Error(blueprintItemsError.message);
+    selectedSocialWorkBlueprintItem = pickBestSocialWorkBlueprintItem(
+      typedQuestion,
+      {
+        examTrack: typedQuestion.exam_track,
+        topic: typedQuestion.topic,
+        subtopic: typedQuestion.subtopic_record,
+      },
+      (blueprintItems || []) as NonNullable<QuestionContext['socialWorkBlueprintItem']>[]
+    );
+  }
+
   const { data: existing, error: existingError } = await supabaseAdmin
     .from('questions')
     .select('id, question_en, duplicate_hash')
@@ -508,13 +593,21 @@ export async function checkAndUpdateQuestionIntegrity(supabaseAdmin: SupabaseCli
     examTrack: typedQuestion.exam_track,
     topic: typedQuestion.topic,
     subtopic: typedQuestion.subtopic_record,
-    socialWorkBlueprintItem: typedQuestion.social_work_blueprint_item,
+    socialWorkBlueprintItem: selectedSocialWorkBlueprintItem,
     existingQuestions: (existing || []) as QuestionContext['existingQuestions'],
   });
 
   const { data: updated, error: updateError } = await supabaseAdmin
     .from('questions')
     .update({
+      ...(selectedSocialWorkBlueprintItem ? {
+        social_work_blueprint_item_id: typedQuestion.social_work_blueprint_item_id || selectedSocialWorkBlueprintItem.id,
+        blueprint_content_area: typedQuestion.blueprint_content_area || selectedSocialWorkBlueprintItem.major_content_area,
+        blueprint_competency_section: typedQuestion.blueprint_competency_section || selectedSocialWorkBlueprintItem.competency_section,
+        applied_knowledge_statement: typedQuestion.applied_knowledge_statement || selectedSocialWorkBlueprintItem.applied_knowledge_statement,
+        question_writing_guideline: typedQuestion.question_writing_guideline || selectedSocialWorkBlueprintItem.sample_style_guidance,
+        blueprint_reference_text: typedQuestion.blueprint_reference_text || selectedSocialWorkBlueprintItem.official_blueprint_text || selectedSocialWorkBlueprintItem.applied_knowledge_statement,
+      } : {}),
       integrity_status: result.integrity_status,
       integrity_score: result.integrity_score,
       quality_flags: result.quality_flags,
