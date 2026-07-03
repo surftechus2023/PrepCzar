@@ -152,6 +152,21 @@ function similarity(left: string | null | undefined, right: string | null | unde
   return union ? intersection / union : 0;
 }
 
+function tokenCoverageScore(sourceText: string | null | undefined, targetText: string | null | undefined, minimumMatchedForFullCredit = 4) {
+  const sourceTokens = tokenize(sourceText);
+  if (!sourceTokens.length) return null;
+
+  const targetNormalized = normalizeText(targetText);
+  const matched = sourceTokens.filter((token) => targetNormalized.includes(token)).length;
+  return Math.min(100, Math.round((matched / Math.min(sourceTokens.length, minimumMatchedForFullCredit)) * 100));
+}
+
+function sameNormalizedText(left: string | null | undefined, right: string | null | undefined) {
+  const normalizedLeft = normalizeText(left);
+  const normalizedRight = normalizeText(right);
+  return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight);
+}
+
 export function createQuestionDuplicateHash(questionText: string | null | undefined, examTrackId: string | null | undefined) {
   return createHash('sha256')
     .update(`${examTrackId || 'unknown'}:${normalizeText(questionText)}`)
@@ -240,21 +255,48 @@ function evaluateBlueprintAlignment(question: Question, context: QuestionContext
   }
 
   const socialWorkItem = context.socialWorkBlueprintItem;
-  const scoreParts = socialWorkItem
-    ? [
-        { text: socialWorkItem.applied_knowledge_statement || question.applied_knowledge_statement || question.learning_objective || '', weight: 45 },
-        { text: socialWorkItem.official_blueprint_text || question.blueprint_reference_text || '', weight: 20 },
-        { text: socialWorkItem.competency_section || question.blueprint_competency_section || '', weight: 15 },
-        { text: socialWorkItem.major_content_area || question.blueprint_content_area || '', weight: 10 },
-        { text: `${context.topic?.title || ''} ${context.subtopic?.title || question.subtopic || ''}`, weight: 10 },
-      ]
-    : [
-        { text: officialBlueprintText, weight: 45 },
-        { text: context.subtopic?.title || question.subtopic || '', weight: 15 },
-        { text: context.subtopic?.description || '', weight: 10 },
-        { text: context.subtopic?.learning_objective || question.learning_objective || '', weight: 20 },
-        { text: `${context.topic?.title || ''} ${context.topic?.description || ''}`, weight: 10 },
-      ];
+  if (socialWorkItem) {
+    const appliedStatement = socialWorkItem.applied_knowledge_statement || question.applied_knowledge_statement || question.learning_objective || '';
+    const officialText = socialWorkItem.official_blueprint_text || question.blueprint_reference_text || '';
+    const competency = socialWorkItem.competency_section || question.blueprint_competency_section || '';
+    const majorArea = socialWorkItem.major_content_area || question.blueprint_content_area || '';
+    const hasStoredSelection = Boolean(
+      question.social_work_blueprint_item_id
+      || sameNormalizedText(question.applied_knowledge_statement, socialWorkItem.applied_knowledge_statement)
+      || sameNormalizedText(question.blueprint_competency_section, socialWorkItem.competency_section)
+    );
+
+    const scoredParts = [
+      { score: tokenCoverageScore(appliedStatement, questionText), weight: 40 },
+      { score: tokenCoverageScore(officialText, questionText), weight: 15 },
+      { score: tokenCoverageScore(competency, questionText), weight: 10 },
+      { score: tokenCoverageScore(majorArea, questionText), weight: 5 },
+      { score: hasStoredSelection ? 100 : null, weight: 30 },
+    ].filter((part): part is { score: number; weight: number } => typeof part.score === 'number');
+
+    const availableSocialWorkWeight = scoredParts.reduce((sum, part) => sum + part.weight, 0);
+    if (!availableSocialWorkWeight) return { score: 0, hasReliableBlueprintMetadata: false };
+
+    const weightedScore = scoredParts.reduce((sum, part) => sum + part.score * part.weight, 0) / availableSocialWorkWeight;
+    const contentScore = Math.max(
+      tokenCoverageScore(appliedStatement, questionText) ?? 0,
+      tokenCoverageScore(officialText, questionText) ?? 0,
+      tokenCoverageScore(competency, questionText) ?? 0
+    );
+
+    return {
+      score: Math.round(Math.max(contentScore < 25 ? Math.min(weightedScore, 74) : weightedScore, hasStoredSelection ? 70 : 35)),
+      hasReliableBlueprintMetadata,
+    };
+  }
+
+  const scoreParts = [
+    { text: officialBlueprintText, weight: 45 },
+    { text: context.subtopic?.title || question.subtopic || '', weight: 15 },
+    { text: context.subtopic?.description || '', weight: 10 },
+    { text: context.subtopic?.learning_objective || question.learning_objective || '', weight: 20 },
+    { text: `${context.topic?.title || ''} ${context.topic?.description || ''}`, weight: 10 },
+  ];
 
   let availableWeight = 0;
   let score = 0;
