@@ -2,173 +2,138 @@
 
 PrepCzar uses this generated-question workflow:
 
-`Official handbook/blueprint -> stored topic table -> generator uses it -> checker uses it -> reviewer sees it`
+`stored blueprint metadata -> generator prompt -> deterministic integrity check -> admin review -> optional auto-improve`
 
-This workflow is an automated pre-review quality-control layer. It does not replace professional psychometric validation or human subject-matter expert review.
+This is a pre-review quality-control layer. It does not replace human subject-matter review.
 
-## Strict Generation Rules
+## Metadata Source
 
-The AI question generator creates original, exam-track-specific MCQs aligned to:
-
-- selected `exam_track_id`
-- selected `topic_id`
-- selected `subtopic_id` when available
-- selected subtopic
-- selected learning objective
-- selected difficulty expectations
-- selected cognitive-level expectations
-- stored official blueprint text from `topics`, `subtopics`, and `questions.blueprint_reference_text`
-
-The generator receives stored Supabase metadata: official source URL, exam description, topic description, topic official blueprint text, subtopic official blueprint text, learning objective, and blueprint reference text.
-
-Generated items must not mix exam levels, such as BSW, MSW/LMSW, and LCSW, or NCLEX-RN and NCLEX-PN. Generic healthcare, social work, psychology, nursing, or counseling items are treated as weak items.
-
-## Exam-Track-Specific Rules
-
-Generation uses `lib/content-generation/exam-track-rules.ts` to keep each track at the right reasoning level:
-
-- BSW: foundational concepts, basic ethics, basic human development; recall can be used but should not dominate.
-- MSW/LMSW: practice application, assessment, intervention planning, ethics, supervision, and community practice.
-- LCSW: usually case-based; emphasizes differential diagnosis, assessment priority, intervention choice, ethics, risk, treatment planning, and clinical reasoning.
-- NCLEX-RN: clinical judgment, safety, prioritization, delegation, pharmacology, nursing process, acute care, and Next Gen reasoning.
-- NCLEX-PN: PN scope, safety, basic care, pharmacology basics, patient education, prioritization within PN scope, and reporting/escalation.
-- EPPP: applied psychology, ethics, diagnosis, assessment, intervention, research methods, biological bases, social/multicultural, and lifespan development.
-- NCE: counseling process, ethics, human growth, career development, assessment, group counseling, helping relationships, research/program evaluation.
-- CCM: case management process, care coordination, utilization management, ethics, reimbursement, psychosocial aspects, rehabilitation, and professional practice.
-
-LCSW questions must generally be case-based because the exam expects clinical reasoning, not simple disorder-definition recall. A weak LCSW item such as "Which disorder is characterized by inattention and hyperactivity-impulsivity?" is automatically targeted for rewrite into a vignette testing assessment priority, differential diagnosis, ethics, safety/risk, intervention planning, or best next step.
-
-NCLEX questions should emphasize clinical judgment because nursing exams test safe prioritization and care decisions, not just memorized facts.
-
-## Blueprint Alignment Threshold
-
-Each question receives a `blueprint_alignment_score`.
-
-- `90-100`: directly tests the selected blueprint objective
-- `80-89`: aligned and acceptable
-- `70-79`: related but needs review or improvement
-- Below `70`: weak or off-topic
-- Missing blueprint metadata: `integrity_status='needs_metadata'`
-- Student visibility requires `blueprint_alignment_score >= 80`
-
-The checker judges alignment only against stored blueprint metadata. It does not rely only on model memory or general knowledge of the exam.
-
-If all blueprint metadata is missing, the checker sets `integrity_status='needs_metadata'` and asks admins to add topic/subtopic/reference metadata. Legacy questions can fall back to learning objective, topic description, topic title, subtopic, or source topic.
-
-Admins can update topic/subtopic blueprint text or the question's blueprint reference text and rerun the integrity check.
-
-## Difficulty Threshold
-
-Each question receives a `difficulty_quality_score`.
-
-- Target: track-specific minimum, usually `75-80`
-- Below target: `integrity_status='needs_improvement'`
-
-Difficulty quality is calibrated by intended vs predicted difficulty:
-
-- Exact match: `90-100`
-- One level higher: `75-90`
-- One level lower: `60-75`
-- Two levels off: below `60`
-
-If intended difficulty is medium and predicted difficulty is hard, the item is not heavily penalized when it demonstrates appropriate clinical judgment or analysis.
-
-## Cognitive Levels
-
-Recall primarily asks for a memorized fact or definition.
-Application asks the candidate to use knowledge in a professional situation.
-Analysis asks the candidate to compare, prioritize, interpret, or differentiate.
-Clinical judgment asks the candidate to decide what matters most in a case, often involving risk, assessment, ethics, or next-step intervention.
-
-Advanced tracks such as LCSW, NCLEX-RN, and CCM should heavily favor application, analysis, prioritization, safety, ethics, and clinical judgment.
-
-## Integrity Scoring
-
-Each question receives an `integrity_score`.
-
-- Target: `85+`
-- `80+` with acceptable blueprint and difficulty: can pass if no blocking flags exist
-- Below threshold: `needs_review` or `needs_improvement`
-- Missing metadata: `needs_metadata`
-- High plagiarism risk: `failed`
-- Bias/fairness flags route the item to review even if the numeric score is high
-
-The score considers item-writing quality, distractor quality, stored-blueprint alignment, cognitive match, difficulty match, fairness, and originality risk.
-
-## Auto-Improvement Flow
-
-During generation:
-
-1. AI generates a candidate question using stored blueprint metadata and exam-track rules.
-2. The system runs pre-save integrity validation.
-3. If an advanced-track question is recall-only, the AI rewrites it before saving.
-4. If `blueprint_alignment_score < 80`, the AI rewrites it before saving.
-5. If `difficulty_quality_score` is below the track threshold, the AI rewrites it before saving.
-6. If `integrity_score < 85`, the AI attempts one improvement before saving.
-7. The improved candidate is saved with `reviewed=false` and `active=false`.
-
-During admin review:
-
-1. Admin clicks `Auto-Improve and Recheck`.
-2. The current question, flags, stored blueprint metadata, and exam-track rules are sent to the AI improver.
-3. The rewritten item replaces the stored draft.
-4. `improvement_attempts` increments.
-5. `auto_improved=true` is recorded.
-6. Integrity is rerun automatically.
-7. Before/after notes are stored in `improvement_notes`.
-
-Auto-improvement is limited to 2 attempts per question. If the item still misses threshold after 2 attempts, it is marked `needs_human_review`.
-
-When attempts are exhausted, manual edit remains available. Reviewers should revise the stem, answer choices, rationales, learning objective, or blueprint reference text, then click `Rerun Integrity Check`.
-
-## Rerun Integrity vs Auto-Improve
-
-`Rerun Integrity Check` only rescans and rescores the current stored question. It does not rewrite content.
-
-`Auto-Improve and Recheck` rewrites the question using AI, saves the improved draft, increments improvement metadata, and then reruns integrity scoring.
-
-## Blueprint Metadata Storage
-
-Blueprint metadata is stored in:
+Generation and review must use stored metadata, not generic model memory:
 
 - `exam_tracks.official_source_url`
 - `exam_tracks.official_exam_description`
+- `exam_tracks.aswb_exam_level`
 - `topics.official_blueprint_text`
 - `topics.official_weight_percent`
-- `subtopics.official_blueprint_text`
+- `subtopics.description`
 - `subtopics.learning_objective`
-- `questions.subtopic_id`
-- `questions.blueprint_reference_text`
+- `subtopics.official_blueprint_text`
+- `social_work_blueprint_items.*`
+- `question_blueprint_guidelines.*`
+- question-level copied blueprint context
 
-The AI Question Review page includes "Blueprint context used for integrity check" so reviewers can see exactly what metadata was used when scoring alignment.
+If Social Work metadata is missing, the checker returns `needs_metadata` and the admin review page shows a missing metadata warning.
 
-## Publishing Rules
+## Difficulty Policy
 
-Publishing requires:
+Generated questions are medium or hard only.
 
-- `reviewed=true`
-- `active=true`
-- `integrity_status='passed'`
+- Easy questions are rejected.
+- Medium questions must require application to a scenario.
+- Hard questions must require reasoning, prioritization, differential diagnosis, risk, ethics, or best-next-step judgment.
 
-Or:
+Recall-only items such as definition stems are treated as weak. LCSW/Clinical recall stems should be rewritten into case vignettes.
 
-- `reviewed=true`
-- `active=true`
-- `integrity_override=true`
-- an admin override reason and audit metadata are recorded
+## Social Work Rules
 
-## Student Visibility
+BSW/Bachelors items use foundational Social Work knowledge and clear practice scenarios.
 
-Students can only see MCQs where:
+LMSW/MSW/Masters items use graduate-level application and professional judgment.
 
-- `reviewed=true`
-- `active=true`
-- `integrity_status='passed'`
-- `blueprint_alignment_score >= 80`
-- `integrity_score >= 80`
+LCSW/Clinical items should test clinical reasoning in social work scope: assessment, DSM-informed diagnosis, risk assessment, ethical judgment, treatment planning, intervention choice, supervision, consultation, boundaries, confidentiality, mandated reporting, transference, and countertransference.
 
-Or:
+Do not generate generic psychology questions. Do not require prescribing medication or out-of-scope medical decisions.
 
-- `integrity_override=true`
+## Generator Inputs
 
-Generated, unchecked, weakly aligned, low-difficulty, missing-metadata, or non-reviewed questions are kept out of student practice.
+The generator receives:
+
+- exam track and ASWB exam level
+- official source URL and exam description
+- major content area and content weight
+- competency section
+- applied knowledge statement
+- topic and subtopic blueprint text
+- question-writing guideline
+- cognitive target
+- difficulty target
+
+Social Work generation requires a selected stored applied knowledge statement.
+
+## Integrity Scoring
+
+The integrity checker compares the question only against supplied metadata:
+
+- exam track
+- ASWB exam level
+- major content area
+- competency section
+- applied knowledge statement
+- topic blueprint text
+- subtopic blueprint text
+- difficulty target
+- cognitive target
+- ASWB-style question-writing guideline
+
+Blueprint alignment:
+
+- `90-100`: directly tests the selected applied knowledge statement
+- `80-89`: aligned and acceptable
+- `70-79`: related but generic or weak
+- below `70`: off-topic or not tied to the supplied blueprint
+
+Passing requires:
+
+- `blueprint_alignment_score >= 85`
+- `difficulty_quality_score >= 80`
+- `integrity_score >= 85`
+
+Statuses:
+
+- `passed`: thresholds met and metadata present
+- `needs_improvement`: aligned but too easy, too generic, or below threshold
+- `needs_metadata`: required blueprint fields are missing
+- `needs_human_review`: auto-improve exhausted without meeting thresholds
+- `failed`: off-topic, highly duplicative, or otherwise not salvageable automatically
+
+## Auto-Improve
+
+Auto-improve uses `CONTENT_IMPROVEMENT_MODEL` and receives:
+
+- original question
+- failed scores
+- quality flags
+- distractor flags
+- blueprint context
+- exam-track rules
+- applied knowledge statement
+- difficulty target
+- cognitive target
+
+The improver must rewrite substantially. For LCSW/Clinical, weak items become case vignettes testing differential diagnosis, assessment priority, risk assessment, ethical decision-making, best next step, treatment planning, or clinical intervention choice.
+
+The improved question must preserve exam track, major content area, competency, applied knowledge statement, cognitive target, and difficulty target. It must improve distractors, rationales, and the test-taking tip.
+
+Auto-improve is limited to two attempts. After that, the item is marked `needs_human_review` and manual Edit remains available.
+
+## Admin Workflow
+
+To fix missing metadata:
+
+1. Update the exam track, topic, subtopic, or Social Work blueprint item.
+2. Backfill legacy question context when possible.
+3. Click `Rerun Integrity`.
+4. Use `Auto-Improve and Recheck` for weak but metadata-complete questions.
+5. Publish only when integrity passes.
+
+Legacy `Psychopathology & Diagnosis` Social Work questions are backfilled to the LCSW/Clinical DSM-5-TR assessment blueprint item when possible.
+
+## Model Configuration
+
+Defaults:
+
+- `CONTENT_GENERATION_MODEL=gpt-4.1-mini`
+- `CONTENT_INTEGRITY_MODEL=gpt-5.5`
+- `CONTENT_IMPROVEMENT_MODEL=gpt-5.5`
+
+The current integrity checker is deterministic but keeps `CONTENT_INTEGRITY_MODEL` reserved for AI-assisted review expansion.

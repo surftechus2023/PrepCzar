@@ -1,6 +1,8 @@
 export { getOpenAIClient } from './client';
 import { getOpenAIClient } from './client';
 
+const CONTENT_GENERATION_MODEL = process.env.CONTENT_GENERATION_MODEL || 'gpt-4.1-mini';
+
 function parseGeneratedArray(content: string, keys: string[]) {
   const parsed = JSON.parse(content);
   if (Array.isArray(parsed)) return parsed;
@@ -41,13 +43,13 @@ Return a JSON array with this exact structure for each question:
   "rationale_en": "Detailed explanation in English",
   "rationale_es": "Detailed explanation in Spanish",
   "rationale_fr": "Detailed explanation in French",
-  "difficulty": "easy" | "medium" | "hard"
+  "difficulty": "medium" | "hard"
 }
 
-Ensure questions are original, clinically accurate, appropriately difficult, and relevant to the certification exam. Do not copy proprietary exam items or published question-bank wording.`;
+Ensure questions are original, clinically accurate, medium or hard only, appropriately difficult, and relevant to the certification exam. Do not copy proprietary exam items or published question-bank wording.`;
 
   const completion = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: CONTENT_GENERATION_MODEL,
     messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
   });
@@ -75,7 +77,7 @@ Return a JSON array with this exact structure:
 Make flashcards concise, memorable, original, and exam-relevant. Do not copy proprietary exam-prep wording.`;
 
   const completion = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: CONTENT_GENERATION_MODEL,
     messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
   });
@@ -109,7 +111,7 @@ Return a JSON array with this exact structure:
 Cases should be original, realistic, complex, and test critical thinking. Do not copy proprietary exam items or published case material.`;
 
   const completion = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: CONTENT_GENERATION_MODEL,
     messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
   });

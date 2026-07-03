@@ -4,6 +4,7 @@ import { getExamTrackRules, isRecallOnlyStem } from '@/lib/content-generation/ex
 import type { Question } from '@/types/database';
 
 export type IntegrityStatus = 'pending' | 'passed' | 'needs_review' | 'needs_improvement' | 'needs_human_review' | 'needs_metadata' | 'failed';
+export const CONTENT_INTEGRITY_MODEL = process.env.CONTENT_INTEGRITY_MODEL || 'gpt-5.5';
 type CognitiveLevel =
   | 'recall'
   | 'comprehension'
@@ -22,6 +23,7 @@ export interface QuestionContext {
     slug?: string | null;
     official_source_url?: string | null;
     official_exam_description?: string | null;
+    aswb_exam_level?: string | null;
   } | null;
   topic?: {
     id: string;
@@ -76,6 +78,8 @@ export function getBlueprintReferenceText(question: Question, context: QuestionC
     context.subtopic?.official_blueprint_text,
     context.subtopic?.learning_objective,
     question.blueprint_reference_text,
+    question.question_writing_guideline,
+    context.socialWorkBlueprintItem?.sample_style_guidance,
     question.applied_knowledge_statement,
     question.blueprint_competency_section,
     question.blueprint_content_area,
@@ -99,7 +103,7 @@ const CLINICAL_CONTEXT = /\b(client|patient|student|family|caregiver|case|therap
 export const BLUEPRINT_ALIGNMENT_SCORING_INSTRUCTIONS = `You are not judging blueprint alignment from general knowledge.
 You must judge alignment only against the provided exam blueprint metadata.
 Score 90-100 when the question directly tests the supplied blueprint objective with clear exam-track relevance.
-Score 80-89 when aligned but could be more specific.
+Score 80-89 when aligned and acceptable but could be more specific.
 Score 70-79 when related but weak or generic.
 Score below 70 when off-topic or insufficiently aligned.
 Do not penalize the question for not covering the entire exam domain.
@@ -111,6 +115,10 @@ function normalizeText(value: string | null | undefined) {
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function hasText(value: string | null | undefined) {
+  return Boolean(value && value.trim());
 }
 
 function tokenize(value: string | null | undefined) {
@@ -178,6 +186,34 @@ function socialWorkTopicHint(question: Question, context: QuestionContext) {
     context.topic?.title,
     context.topic?.description,
   ].join(' '));
+}
+
+function isSocialWorkContext(question: Question, context: QuestionContext) {
+  return /\b(bsw|msw|lmsw|lcsw|social work|clinical social)\b/.test(normalizeText([
+    context.examTrack?.slug,
+    context.examTrack?.name,
+    context.examTrack?.full_name,
+    context.socialWorkBlueprintItem?.exam_level,
+    question.blueprint_content_area,
+    question.blueprint_competency_section,
+    question.applied_knowledge_statement,
+  ].join(' ')));
+}
+
+function missingSocialWorkMetadata(question: Question, context: QuestionContext) {
+  if (!isSocialWorkContext(question, context)) return [];
+  const item = context.socialWorkBlueprintItem;
+  return [
+    ['Official source URL', context.examTrack?.official_source_url],
+    ['Exam description', context.examTrack?.official_exam_description],
+    ['ASWB exam level', context.examTrack?.aswb_exam_level || item?.exam_level],
+    ['Major content area', item?.major_content_area || question.blueprint_content_area],
+    ['Competency section', item?.competency_section || question.blueprint_competency_section],
+    ['Applied knowledge statement', item?.applied_knowledge_statement || question.applied_knowledge_statement],
+    ['Topic blueprint text', context.topic?.official_blueprint_text],
+    ['Subtopic blueprint text', context.subtopic?.official_blueprint_text || item?.official_blueprint_text || question.blueprint_reference_text],
+    ['Question-writing guideline', item?.sample_style_guidance || question.question_writing_guideline],
+  ].filter(([, value]) => !hasText(value as string | null | undefined)).map(([label]) => label);
 }
 
 function majorAreaPreference(metadataText: string) {
@@ -453,6 +489,7 @@ function evaluateDifficultyQuality(question: Question, context: QuestionContext,
   const rules = getExamTrackRules(trackName);
   const stemTokens = tokenize(question.question_en);
   const intended = question.difficulty || 'medium';
+  if (intended === 'easy') return 0;
   const difficultyRank = { easy: 1, medium: 2, hard: 3 };
   const delta = difficultyRank[predictedDifficulty] - difficultyRank[intended];
   let score = 95;
@@ -467,11 +504,12 @@ function evaluateDifficultyQuality(question: Question, context: QuestionContext,
   if (isTooLowForTrack(question, context, detected)) score -= 35;
   if ((intended === 'medium' || intended === 'hard') && detected === 'recall') score -= 30;
   if (intended === 'hard' && !['analysis', 'clinical judgment', 'safety', 'prioritization', 'ethics'].includes(detected)) score -= 20;
-  if (stemTokens.length < 25 && intended !== 'easy') score -= 15;
+  if (stemTokens.length < 25) score -= 15;
   if (!/\b(case|client|patient|scenario|first|priority|best|most appropriate|assessment|intervention|response)\b/i.test(question.question_en) && detected !== 'recall') {
     score -= 15;
   }
   if (rules.preferScenarioBased && isRecallOnlyStem(question.question_en)) score -= 35;
+  if (isSocialWorkContext(question, context) && isRecallOnlyStem(question.question_en)) score -= 40;
 
   return Math.max(0, Math.min(100, score));
 }
@@ -490,14 +528,20 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
   const notes: string[] = [];
   const trackName = `${context.examTrack?.name || ''} ${context.examTrack?.full_name || ''}`;
   const rules = getExamTrackRules(trackName);
+  const missingMetadata = missingSocialWorkMetadata(question, context);
 
-  if (!blueprintAlignment.hasReliableBlueprintMetadata) {
+  if (missingMetadata.length) {
+    notes.push(`Missing blueprint metadata - update topic/subtopic before generating or reviewing: ${missingMetadata.join(', ')}.`);
+  } else if (!blueprintAlignment.hasReliableBlueprintMetadata) {
     notes.push('Blueprint metadata was missing, so alignment could not be reliably scored.');
-  } else if (blueprintAlignmentScore < 90) {
+  } else if (blueprintAlignmentScore < 85) {
     notes.push(context.socialWorkBlueprintItem
-      ? 'Question is below the 90+ blueprint alignment target for the selected applied knowledge statement and should be improved before human review.'
-      : 'Question is below the 90+ blueprint alignment target and should be improved before human review.');
+      ? 'Question is below the 85+ blueprint alignment target for the selected applied knowledge statement and should be improved before human review.'
+      : 'Question is below the 85+ blueprint alignment target and should be improved before human review.');
+  } else if (blueprintAlignmentScore < 90) {
+    notes.push('Question is aligned but could be made more specific to the supplied blueprint metadata.');
   }
+  if (question.difficulty === 'easy') notes.push('Easy questions are disabled and must be rewritten to medium or hard.');
   if (difficultyQualityScore < 80) notes.push('Question is below the 80+ professional difficulty quality target and should be improved.');
   if (!cognitiveLevelMatches(question, cognitiveLevelDetected)) notes.push('Detected cognitive level does not clearly match the intended cognitive level.');
   if (isTooLowForTrack(question, context, cognitiveLevelDetected)) notes.push('Question may be too low-level for this exam track.');
@@ -514,16 +558,16 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
   const biasPoints = biasFlags.length ? 4 : 10;
   const originalityPoints = plagiarismRiskScore > 70 ? 0 : plagiarismRiskScore >= 45 ? 2 : 5;
   let integrityScore = Math.max(0, Math.min(100, itemWritingPoints + distractorPoints + blueprintPoints + cognitivePoints + difficultyPoints + biasPoints + originalityPoints));
-  if (rules.preferScenarioBased && isRecallOnlyStem(question.question_en)) integrityScore = Math.min(integrityScore, 72);
+  if ((rules.preferScenarioBased || isSocialWorkContext(question, context)) && isRecallOnlyStem(question.question_en)) integrityScore = Math.min(integrityScore, 72);
+  if (question.difficulty === 'easy') integrityScore = Math.min(integrityScore, 70);
 
   let status: IntegrityStatus = 'passed';
 
-  if (!blueprintAlignment.hasReliableBlueprintMetadata) status = 'needs_metadata';
+  if (missingMetadata.length || !blueprintAlignment.hasReliableBlueprintMetadata) status = 'needs_metadata';
   else if (plagiarismRiskScore > 70) status = 'failed';
   else if (blueprintAlignmentScore < 70) status = 'failed';
-  else if (blueprintAlignmentScore < 90 || difficultyQualityScore < rules.minimumDifficultyQualityScore) status = 'needs_improvement';
-  else if (integrityScore < 75) status = 'needs_improvement';
-  else if (integrityScore < 80) status = 'needs_review';
+  else if (question.difficulty === 'easy') status = 'needs_improvement';
+  else if (blueprintAlignmentScore < 85 || difficultyQualityScore < 80 || integrityScore < 85) status = 'needs_improvement';
   if (biasFlags.length && status === 'passed') status = 'needs_review';
 
   return {
@@ -545,7 +589,7 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
 export async function checkAndUpdateQuestionIntegrity(supabaseAdmin: SupabaseClient, questionId: string) {
   const { data: question, error: questionError } = await supabaseAdmin
     .from('questions')
-    .select('*, exam_track:exam_tracks(id, name, full_name, slug, official_source_url, official_exam_description), topic:topics(id, title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(id, title, description, learning_objective, official_blueprint_text), social_work_blueprint_item:social_work_blueprint_items(id, exam_level, major_content_area, percentage_weight, competency_section, applied_knowledge_statement, cognitive_level_guidance, official_blueprint_text, sample_style_guidance)')
+    .select('*, exam_track:exam_tracks(id, name, full_name, slug, official_source_url, official_exam_description, aswb_exam_level), topic:topics(id, title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(id, title, description, learning_objective, official_blueprint_text), social_work_blueprint_item:social_work_blueprint_items(id, exam_level, major_content_area, percentage_weight, competency_section, applied_knowledge_statement, cognitive_level_guidance, official_blueprint_text, sample_style_guidance)')
     .eq('id', questionId)
     .single();
 
@@ -623,7 +667,7 @@ export async function checkAndUpdateQuestionIntegrity(supabaseAdmin: SupabaseCli
       duplicate_hash: typedQuestion.duplicate_hash || result.duplicate_hash,
     })
     .eq('id', questionId)
-    .select('*, exam_track:exam_tracks(name, slug, official_source_url, official_exam_description), topic:topics(title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(title, description, learning_objective, official_blueprint_text), social_work_blueprint_item:social_work_blueprint_items(id, exam_level, major_content_area, percentage_weight, competency_section, applied_knowledge_statement, cognitive_level_guidance, official_blueprint_text, sample_style_guidance)')
+    .select('*, exam_track:exam_tracks(name, slug, official_source_url, official_exam_description, aswb_exam_level), topic:topics(title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(title, description, learning_objective, official_blueprint_text), social_work_blueprint_item:social_work_blueprint_items(id, exam_level, major_content_area, percentage_weight, competency_section, applied_knowledge_statement, cognitive_level_guidance, official_blueprint_text, sample_style_guidance)')
     .single();
 
   if (updateError) throw new Error(updateError.message);

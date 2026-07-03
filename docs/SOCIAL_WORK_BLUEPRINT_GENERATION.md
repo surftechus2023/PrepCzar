@@ -1,115 +1,73 @@
 # Social Work Blueprint Generation
 
-PrepCzar uses stored Social Work blueprint metadata as the source of truth for BSW/Bachelors, LMSW/MSW/Masters, and LCSW/Clinical AI question generation.
+PrepCzar treats stored ASWB/Social Work blueprint metadata as the source of truth for BSW/Bachelors, LMSW/MSW/Masters, and LCSW/Clinical question generation.
 
-## Stored Blueprint Model
+## Stored Metadata
 
-Official blueprint content is stored in `social_work_blueprint_items`.
+Social Work generation requires populated metadata in:
 
-Each record maps one selectable blueprint item:
+- `exam_tracks`: `official_source_url`, `official_exam_description`, `aswb_exam_level`
+- `topics`: major content area title, description, `official_blueprint_text`, `official_weight_percent`
+- `subtopics`: competency section title, description, learning objective, `official_blueprint_text`, display order
+- `social_work_blueprint_items`: exam level, major content area, weight, competency section, applied knowledge statement, cognitive guidance, official blueprint text, style guidance
+- `question_blueprint_guidelines`: cognitive level, allowed question types, prohibited question types, and difficulty rules
 
-- `exam_track_id`: BSW, LMSW/MSW, or LCSW/Clinical track
-- `major_content_area`: major ASWB-style content area
-- `percentage_weight`: content area weight
-- `competency_section`: competency/domain section
-- `applied_knowledge_statement`: the specific applied knowledge statement tested
-- `cognitive_level_guidance`: recall, application, reasoning, clinical judgment, ethics, safety, or prioritization guidance
-- `official_blueprint_text`: official handbook/blueprint text copied from the uploaded source
-- `sample_style_guidance`: ASWB-style item-writing guidance for that blueprint item
+The app must not invent Social Work blueprint statements. If required fields are missing, generation and review should stop with `needs_metadata`.
 
-The actual official blueprint text must be populated from the uploaded blueprint/handbook. The app should not invent applied knowledge statements.
+## Exam Levels
 
-## Exam-Level Differences
+- **BSW/Bachelors:** foundational social work values, ethics, assessment, planning, intervention, service delivery, diversity, and social justice.
+- **LMSW/MSW/Masters:** graduate-level application and professional reasoning across assessment, planning, intervention, ethics, supervision, community practice, and research.
+- **LCSW/Clinical:** vignette-based clinical reasoning across ethics, assessment, DSM-informed diagnosis, risk, treatment planning, intervention, supervision, and clinical judgment.
 
-- **BSW/Bachelors:** foundational social work knowledge; more recall and application are acceptable.
-- **LMSW/MSW/Masters:** graduate-level application and reasoning; emphasizes assessment, planning, intervention, ethics, supervision, community practice, and professional judgment.
-- **LCSW/Clinical:** vignette-based reasoning; emphasizes assessment, DSM-informed diagnosis, risk, treatment planning, clinical intervention, boundaries, confidentiality, mandated reporting, supervision, and ethical clinical judgment.
+## LCSW/Clinical Blueprint
 
-## Generation Flow
+The Clinical track uses these major content areas:
 
-Admins select:
+- `I. VALUES AND ETHICS` - 36%
+- `II. ASSESSMENT AND PLANNING` - 32%
+- `III. INTERVENTION AND PRACTICE` - 32%
 
-- exam track
-- topic
-- Social Work applied knowledge statement
-- quantity
-- intended cognitive level
-- intended difficulty
+Clinical blueprint detail includes confidentiality, ethical dilemmas, informed consent, boundaries, mandatory reporting, self-determination, diversity and social justice, trauma, mental and emotional illness, co-occurring disorders, biopsychosocial assessment, DSM-5-TR use, mental status examination, risk of harm, treatment planning, intervention modalities, trauma-informed care, crisis intervention, motivational interviewing, CBT, DBT, EMDR, mindfulness-based interventions, family/couples/group interventions, supervision, consultation, transference, and countertransference.
 
-The generator includes the selected blueprint item in the prompt and generates only questions aligned to that applied knowledge statement. Social Work questions must use simple wording, one clear best answer, plausible distractors, ASWB-style qualifiers such as BEST/FIRST/NEXT/MOST when appropriate, and detailed rationales.
+Legacy `Psychopathology & Diagnosis` content is mapped to:
 
-The app stores the selected blueprint context on each generated question:
+- Major content area: `II. ASSESSMENT AND PLANNING`
+- Competency: `IIB. ASSESSMENT METHODS AND TECHNIQUES`
+- Applied knowledge statement: `Use of the Diagnostic and Statistical Manual of Mental Disorders in assessment and common indicators of mental health and brain-related conditions`
 
-- `social_work_blueprint_item_id`
-- `blueprint_content_area`
-- `blueprint_competency_section`
-- `applied_knowledge_statement`
-- `question_writing_guideline`
-- `intended_cognitive_level`
-- `blueprint_reference_text`
+## Generation Rules
 
-## Integrity Scoring
+Admins must select a stored Social Work applied knowledge statement. The generator receives the exam track, ASWB exam level, exam description, major content area, weight, competency section, applied knowledge statement, topic blueprint text, subtopic blueprint text, question-writing guideline, cognitive target, and difficulty target.
 
-The integrity checker compares each question against:
+Social Work questions are medium or hard only. Easy recall questions are rejected.
 
-- selected exam track
-- selected major content area
-- selected competency section
-- selected applied knowledge statement
-- stored official blueprint text
-- intended cognitive level
-- intended difficulty
+- Medium: requires applying blueprint knowledge to a practice scenario.
+- Hard: requires reasoning, prioritization, risk assessment, ethical judgment, differential diagnosis, or best-next-step decision-making.
 
-Blueprint alignment scoring:
+LCSW/Clinical questions should be case-vignette items using FIRST, NEXT, BEST, or MOST appropriate when helpful. They must stay within social work scope and must not require prescribing medication or other out-of-scope decisions.
 
-- `90–100`: directly tests the selected applied knowledge statement
-- `80–89`: aligned and acceptable but not specific enough for automatic pass
-- `70–79`: related but weak or generic
-- below `70`: off-topic or not clearly tied to the selected blueprint item
+## Integrity Review
 
-If required blueprint metadata is missing, the checker sets `integrity_status='needs_metadata'` instead of assigning a low alignment score.
+The integrity checker uses the same stored metadata that the generator used. It compares the question against exam track, ASWB exam level, major content area, competency section, applied knowledge statement, topic blueprint text, subtopic blueprint text, difficulty target, cognitive target, and ASWB-style question-writing guidance.
 
-## Auto-Improvement
+Blueprint alignment:
 
-When a generated question falls below threshold, the auto-improver rewrites it using the same selected blueprint item. It preserves exam track, topic, competency, applied knowledge statement, intended cognitive level, and intended difficulty.
+- `90-100`: directly tests the selected applied knowledge statement
+- `80-89`: aligned and acceptable
+- `70-79`: related but generic or weak
+- below `70`: off-topic or not tied to the supplied blueprint
 
-Auto-improvement:
+Passing requires `blueprint_alignment_score >= 85`, `difficulty_quality_score >= 80`, and `integrity_score >= 85`. Missing blueprint metadata returns `needs_metadata`. Easy questions return `needs_improvement`.
 
-- increases blueprint alignment
-- improves ASWB-style realism
-- strengthens distractors and rationales
-- makes LCSW/Clinical items more vignette-based when appropriate
-- avoids shifting to another topic or scope of practice
+## Auto-Improve
 
-Auto-improvement is limited to two attempts. If the item still fails, it becomes `needs_human_review`.
+Auto-improve receives the original question, failed scores, quality flags, distractor flags, blueprint context, exam-track rules, applied knowledge statement, difficulty target, and cognitive target.
 
-## Review UI
+For LCSW/Clinical, weak or generic items are rewritten into case vignettes testing differential diagnosis, assessment priority, risk assessment, ethical decision-making, best next step, treatment planning, or clinical intervention choice.
 
-The AI Question Review page includes “Blueprint context used for generation and integrity check,” showing:
+The rewrite must preserve exam track, major content area, competency, applied knowledge statement, and Social Work scope. After two failed attempts, the question is marked `needs_human_review`; manual Edit remains enabled.
 
-- exam track
-- major content area
-- weight
-- competency section
-- applied knowledge statement
-- cognitive level target
-- blueprint text used
-- question-writing guideline used
+## Admin Fixes
 
-This lets reviewers verify the metadata used for both generation and scoring.
-
-## Publishing
-
-Students can see only questions that are:
-
-- `reviewed=true`
-- `active=true`
-- `integrity_status='passed'`
-- `blueprint_alignment_score >= 90`
-- `difficulty_quality_score >= 80`
-
-An admin override can publish an exception, but the override reason is recorded.
-
-## Human Review Requirement
-
-This workflow is an automated pre-review quality-control layer. It does not replace professional psychometric validation or SME review. Human review remains required before publishing high-stakes exam content.
+If review shows `Missing blueprint metadata - update topic/subtopic before generating or reviewing`, update the stored topic/subtopic or Social Work blueprint item first, then rerun integrity. Do not publish legacy Social Work questions until metadata exists and integrity passes.

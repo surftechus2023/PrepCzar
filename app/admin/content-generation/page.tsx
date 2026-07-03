@@ -35,10 +35,10 @@ export default function ContentGenerationPage() {
   const [subtopic, setSubtopic] = useState('');
   const [learningObjective, setLearningObjective] = useState('');
   const [intendedCognitiveLevel, setIntendedCognitiveLevel] = useState('application');
-  const [intendedDifficulty, setIntendedDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [intendedDifficulty, setIntendedDifficulty] = useState<'medium' | 'hard'>('medium');
   const [quantity, setQuantity] = useState(25);
-  const [difficultyMix, setDifficultyMix] = useState({ easy: 30, medium: 50, hard: 20 });
-  const [cognitiveLevelMix, setCognitiveLevelMix] = useState({ recall: 20, application: 40, analysis: 40 });
+  const [difficultyMix, setDifficultyMix] = useState({ easy: 0, medium: 70, hard: 30 });
+  const [cognitiveLevelMix, setCognitiveLevelMix] = useState({ recall: 0, application: 50, analysis: 50 });
   const [status, setStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle');
   const [result, setResult] = useState<GenerationResult | null>(null);
   const { toast } = useToast();
@@ -267,15 +267,15 @@ export default function ContentGenerationPage() {
               <div>
                 <Label>Intended Cognitive Level</Label>
                 <select value={intendedCognitiveLevel} onChange={(event) => setIntendedCognitiveLevel(event.target.value)} className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
-                  {['recall', 'comprehension', 'application', 'analysis', 'clinical judgment', 'ethics', 'safety', 'prioritization'].map((level) => (
+                  {['application', 'analysis', 'clinical judgment', 'ethics', 'safety', 'prioritization'].map((level) => (
                     <option key={level} value={level}>{level}</option>
                   ))}
                 </select>
               </div>
               <div>
                 <Label>Intended Difficulty</Label>
-                <select value={intendedDifficulty} onChange={(event) => setIntendedDifficulty(event.target.value as 'easy' | 'medium' | 'hard')} className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
-                  {(['easy', 'medium', 'hard'] as const).map((level) => (
+                <select value={intendedDifficulty} onChange={(event) => setIntendedDifficulty(event.target.value as 'medium' | 'hard')} className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
+                  {(['medium', 'hard'] as const).map((level) => (
                     <option key={level} value={level}>{level}</option>
                   ))}
                 </select>
@@ -288,7 +288,7 @@ export default function ContentGenerationPage() {
                   <CardTitle className="text-sm">Difficulty Mix</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {(['easy', 'medium', 'hard'] as const).map((key) => (
+                  {(['medium', 'hard'] as const).map((key) => (
                     <div key={key} className="grid grid-cols-[80px_1fr_64px] items-center gap-3">
                       <Label className="capitalize">{key}</Label>
                       <input type="range" min={0} max={100} value={difficultyMix[key]} onChange={(event) => updateDifficultyMix(key, Number(event.target.value))} />
@@ -303,7 +303,7 @@ export default function ContentGenerationPage() {
                   <CardTitle className="text-sm">Cognitive Level Mix</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {(['recall', 'application', 'analysis'] as const).map((key) => (
+                  {(['application', 'analysis'] as const).map((key) => (
                     <div key={key} className="grid grid-cols-[88px_1fr_64px] items-center gap-3">
                       <Label className="capitalize">{key}</Label>
                       <input type="range" min={0} max={100} value={cognitiveLevelMix[key]} onChange={(event) => updateCognitiveMix(key, Number(event.target.value))} />

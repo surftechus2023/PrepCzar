@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import type { ExamTrack, Question, SocialWorkBlueprintItem, Topic } from '@/types/database';
 
 interface ReviewQuestion extends Question {
-  exam_track?: Pick<ExamTrack, 'name' | 'slug' | 'official_source_url' | 'official_exam_description'>;
+  exam_track?: Pick<ExamTrack, 'name' | 'slug' | 'official_source_url' | 'official_exam_description' | 'aswb_exam_level'>;
   topic?: Pick<Topic, 'title' | 'description' | 'official_blueprint_text' | 'official_weight_percent'>;
   subtopic_record?: {
     title?: string | null;
@@ -105,6 +105,16 @@ export default function ReviewQuestionsPage() {
   }
 
   async function publish(question: ReviewQuestion) {
+    const missingBlueprintMetadata = missingBlueprintFields(question);
+    if (missingBlueprintMetadata.length > 0) {
+      toast({
+        title: 'Missing blueprint metadata',
+        description: 'Update topic/subtopic blueprint metadata and rerun integrity before publishing.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const canPublish = question.integrity_status === 'passed' || question.integrity_override;
     const values: Partial<Question> = { reviewed: true, active: true };
 
@@ -223,6 +233,28 @@ export default function ReviewQuestionsPage() {
     return 'secondary';
   }
 
+  function isMissingBlueprintValue(value: unknown) {
+    if (typeof value !== 'string') return value === null || value === undefined;
+    return !value.trim() || /^legacy item/i.test(value.trim()) || value.trim() === 'Not provided';
+  }
+
+  function missingBlueprintFields(question: ReviewQuestion) {
+    return [
+      ['Official source URL', question.exam_track?.official_source_url],
+      ['Exam description', question.exam_track?.official_exam_description],
+      ['ASWB exam level', question.exam_track?.aswb_exam_level || question.social_work_blueprint_item?.exam_level],
+      ['Major content area', question.blueprint_content_area || question.social_work_blueprint_item?.major_content_area],
+      ['Competency section', question.blueprint_competency_section || question.social_work_blueprint_item?.competency_section],
+      ['Applied knowledge statement', question.applied_knowledge_statement || question.social_work_blueprint_item?.applied_knowledge_statement],
+      ['Cognitive level target', question.intended_cognitive_level || question.cognitive_level],
+      ['Difficulty target', question.difficulty],
+      ['Question-writing guideline', question.question_writing_guideline || question.social_work_blueprint_item?.sample_style_guidance],
+      ['Topic blueprint text', question.topic?.official_blueprint_text],
+      ['Subtopic blueprint text', question.subtopic_record?.official_blueprint_text || question.social_work_blueprint_item?.official_blueprint_text],
+      ['Blueprint reference text', question.blueprint_reference_text || question.social_work_blueprint_item?.official_blueprint_text],
+    ].filter(([, value]) => isMissingBlueprintValue(value)).map(([label]) => label);
+  }
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="mb-6">
@@ -243,6 +275,7 @@ export default function ReviewQuestionsPage() {
           {questions.map((question) => {
             const isEditing = editingId === question.id && editState;
             const optionKeys = ['a', 'b', 'c', 'd'] as const;
+            const missingBlueprintMetadata = missingBlueprintFields(question);
 
             return (
               <Card key={question.id}>
@@ -341,15 +374,21 @@ export default function ReviewQuestionsPage() {
                           Blueprint context used for generation and integrity check
                         </CollapsibleTrigger>
                         <CollapsibleContent className="mt-3 space-y-2 text-muted-foreground">
+                          {missingBlueprintMetadata.length > 0 && (
+                            <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                              Missing blueprint metadata — update topic/subtopic before generating or reviewing. Missing: {missingBlueprintMetadata.join(', ')}
+                            </p>
+                          )}
                           <p><span className="font-medium text-foreground">Exam track:</span> {(question.exam_track as any)?.name || 'Unknown'}</p>
                           <p><span className="font-medium text-foreground">Official source URL:</span> {(question.exam_track as any)?.official_source_url || 'Not provided'}</p>
                           <p><span className="font-medium text-foreground">Exam description:</span> {(question.exam_track as any)?.official_exam_description || 'Not provided'}</p>
-                          <p><span className="font-medium text-foreground">ASWB exam level:</span> {question.social_work_blueprint_item?.exam_level || 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">ASWB exam level:</span> {(question.exam_track as any)?.aswb_exam_level || question.social_work_blueprint_item?.exam_level || 'Not provided'}</p>
                           <p><span className="font-medium text-foreground">Major content area:</span> {question.blueprint_content_area || question.social_work_blueprint_item?.major_content_area || 'Not provided'}</p>
                           <p><span className="font-medium text-foreground">Weight:</span> {question.social_work_blueprint_item?.percentage_weight ?? (question.topic as any)?.official_weight_percent ?? 'Not provided'}</p>
                           <p><span className="font-medium text-foreground">Competency section:</span> {question.blueprint_competency_section || question.social_work_blueprint_item?.competency_section || 'Not provided'}</p>
                           <p><span className="font-medium text-foreground">Applied knowledge statement:</span> {question.applied_knowledge_statement || question.social_work_blueprint_item?.applied_knowledge_statement || 'Not provided'}</p>
                           <p><span className="font-medium text-foreground">Cognitive level target:</span> {question.intended_cognitive_level || question.cognitive_level || question.social_work_blueprint_item?.cognitive_level_guidance || 'Not provided'}</p>
+                          <p><span className="font-medium text-foreground">Difficulty target:</span> {question.difficulty || 'Not provided'}</p>
                           <p><span className="font-medium text-foreground">Question-writing guideline:</span> {question.question_writing_guideline || question.social_work_blueprint_item?.sample_style_guidance || 'Not provided'}</p>
                           <p><span className="font-medium text-foreground">Topic:</span> {(question.topic as any)?.title || 'Unknown'}</p>
                           <p><span className="font-medium text-foreground">Topic description:</span> {(question.topic as any)?.description || 'Not provided'}</p>

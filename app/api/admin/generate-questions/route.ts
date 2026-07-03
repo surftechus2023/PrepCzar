@@ -39,7 +39,7 @@ const requestSchema = z.object({
   subtopic: z.string().min(2),
   learningObjective: z.string().min(5),
   intendedCognitiveLevel: z.string().optional().nullable(),
-  intendedDifficulty: z.enum(['easy', 'medium', 'hard']).optional().nullable(),
+  intendedDifficulty: z.enum(['medium', 'hard']).optional().nullable(),
   quantity: z.number().int().min(1).max(100),
   difficultyMix: difficultyMixSchema,
   cognitiveLevelMix: cognitiveLevelMixSchema,
@@ -53,6 +53,14 @@ function nextBatchSize(remaining: number) {
 function isMissingSchemaObject(errorMessage: string | undefined) {
   const message = (errorMessage || '').toLowerCase();
   return message.includes('schema cache') || message.includes('could not find') || message.includes('column');
+}
+
+function isSocialWorkTrack(track: { name?: string | null; full_name?: string | null; slug?: string | null }) {
+  return /\b(bsw|msw|lmsw|lcsw|social work|clinical social)\b/i.test([
+    track.slug,
+    track.name,
+    track.full_name,
+  ].filter(Boolean).join(' '));
 }
 
 export async function POST(req: NextRequest) {
@@ -80,7 +88,7 @@ export async function POST(req: NextRequest) {
     const [trackRes, topicRes] = await Promise.all([
       supabaseAdmin
         .from('exam_tracks')
-        .select('id, name, full_name, official_source_url, official_exam_description')
+        .select('id, name, full_name, slug, official_source_url, official_exam_description, aswb_exam_level')
         .eq('id', body.examTrackId)
         .eq('active', true)
         .single(),
@@ -98,6 +106,26 @@ export async function POST(req: NextRequest) {
 
     const examName = trackRes.data.full_name || trackRes.data.name;
     const examTrackRules = getExamTrackRules(examName);
+    const socialWorkTrack = isSocialWorkTrack(trackRes.data);
+    const requestedDifficultyMix = {
+      ...body.difficultyMix,
+      easy: 0,
+    };
+
+    if (body.difficultyMix.easy > 0) {
+      return NextResponse.json(
+        { error: 'Easy questions are disabled. Use medium or hard difficulty only.' },
+        { status: 400 }
+      );
+    }
+
+    if (socialWorkTrack && !body.socialWorkBlueprintItemId) {
+      return NextResponse.json(
+        { error: 'Social Work generation requires a stored ASWB blueprint applied knowledge statement.' },
+        { status: 400 }
+      );
+    }
+
     let selectedSubtopic: any = null;
     let selectedBlueprintItem: any = null;
     if (body.subtopicId) {
@@ -124,6 +152,37 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Selected Social Work blueprint item was not found for this exam track.' }, { status: 404 });
       }
       selectedBlueprintItem = blueprintItemData;
+    }
+
+    if (!selectedSubtopic && selectedBlueprintItem?.subtopic_id) {
+      const { data: blueprintSubtopicData, error: blueprintSubtopicError } = await supabaseAdmin
+        .from('subtopics')
+        .select('id, title, description, learning_objective, official_blueprint_text')
+        .eq('id', selectedBlueprintItem.subtopic_id)
+        .maybeSingle();
+
+      if (blueprintSubtopicError) throw new Error(blueprintSubtopicError.message);
+      selectedSubtopic = blueprintSubtopicData;
+    }
+
+    if (socialWorkTrack) {
+      const missingBlueprintFields = [
+        ['official source URL', trackRes.data.official_source_url],
+        ['exam description', trackRes.data.official_exam_description],
+        ['ASWB exam level', trackRes.data.aswb_exam_level || selectedBlueprintItem?.exam_level],
+        ['topic blueprint text', topicRes.data.official_blueprint_text],
+        ['applied knowledge statement', selectedBlueprintItem?.applied_knowledge_statement],
+        ['competency section', selectedBlueprintItem?.competency_section],
+        ['question-writing guideline', selectedBlueprintItem?.sample_style_guidance],
+        ['blueprint reference text', selectedBlueprintItem?.official_blueprint_text],
+      ].filter(([, value]) => typeof value !== 'string' || !value.trim());
+
+      if (missingBlueprintFields.length) {
+        return NextResponse.json(
+          { error: `Missing Social Work blueprint metadata: ${missingBlueprintFields.map(([field]) => field).join(', ')}` },
+          { status: 400 }
+        );
+      }
     }
 
     const effectiveSubtopic = selectedSubtopic?.title || selectedBlueprintItem?.competency_section || body.subtopic;
@@ -208,7 +267,7 @@ export async function POST(req: NextRequest) {
         intendedCognitiveLevel: body.intendedCognitiveLevel || null,
         intendedDifficulty: body.intendedDifficulty || null,
         quantity,
-        difficultyMix: body.difficultyMix,
+        difficultyMix: requestedDifficultyMix,
         cognitiveLevelMix: body.cognitiveLevelMix,
       });
 
@@ -284,7 +343,7 @@ export async function POST(req: NextRequest) {
           integrity.integrity_status !== 'needs_metadata'
           && (
             (examTrackRules.preferScenarioBased && isRecallOnlyStem(question.question))
-            || integrity.blueprint_alignment_score < 90
+            || integrity.blueprint_alignment_score < 85
             || integrity.difficulty_quality_score < examTrackRules.minimumDifficultyQualityScore
             || integrity.integrity_score < 85
           )

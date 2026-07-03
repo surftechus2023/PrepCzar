@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { formatExamTrackRulesForPrompt } from '@/lib/content-generation/exam-track-rules';
 import { getOpenAIClient } from './client';
 
-export const QUESTION_GENERATOR_MODEL = 'gpt-4o-mini';
+export const QUESTION_GENERATOR_MODEL = process.env.CONTENT_GENERATION_MODEL || 'gpt-4.1-mini';
 export const QUESTION_PROMPT_VERSION = 'mcq-quality-v2-strict-integrity';
 
 const percentMixSchema = z.record(z.string(), z.number().int().min(0).max(100));
@@ -20,7 +20,7 @@ export const generatedQuestionSchema = z.object({
   option_c_rationale: z.string().min(10),
   option_d_rationale: z.string().min(10),
   test_taking_tip: z.string().min(10),
-  difficulty: z.enum(['easy', 'medium', 'hard']),
+  difficulty: z.enum(['medium', 'hard']),
   cognitive_level: z.enum([
     'recall',
     'comprehension',
@@ -68,7 +68,7 @@ export const questionGenerationInputSchema = z.object({
   cognitiveLevelGuidance: z.string().optional().nullable(),
   sampleStyleGuidance: z.string().optional().nullable(),
   intendedCognitiveLevel: z.string().optional().nullable(),
-  intendedDifficulty: z.enum(['easy', 'medium', 'hard']).optional().nullable(),
+  intendedDifficulty: z.enum(['medium', 'hard']).optional().nullable(),
   quantity: z.number().int().min(1).max(25),
   difficultyMix: percentMixSchema,
   cognitiveLevelMix: percentMixSchema,
@@ -128,15 +128,20 @@ ${formatExamTrackRulesForPrompt(parsedInput.examTrackName)}
 ASWB-style Social Work rules when a Social Work blueprint item is provided:
 - Treat the selected applied knowledge statement as the source of truth.
 - Every Social Work question must directly map to that one applied knowledge statement.
-- Use the selected major content area, competency section, percentage weight, cognitive guidance, and official blueprint text.
+- Use the selected ASWB exam level, major content area, competency section, percentage weight, topic blueprint text, subtopic blueprint text, cognitive guidance, and official blueprint text.
+- If any Social Work blueprint field says "Not provided", do not invent missing metadata; return no weak placeholder item.
 - Questions may use 3 or 4 answer options in ASWB style, but this application stores four options, so return exactly four high-quality options.
 - Use simple wording, one clear best answer, and no trick wording.
 - Use qualifiers like BEST, FIRST, NEXT, and MOST where appropriate.
 - Never use "all of the above," "none of the above," or "both A and B."
+- Questions must be medium or hard only. Do not generate easy questions.
+- Medium questions must require application of blueprint knowledge to a practice scenario.
+- Hard questions must require reasoning, prioritization, risk assessment, ethical judgment, differential diagnosis, or best-next-step decision-making.
 - BSW/Bachelors items should use foundational social work knowledge with more recall and application.
 - LMSW/MSW/Masters items should use graduate-level application, reasoning, assessment, planning, intervention, ethics, supervision, community practice, and professional judgment.
 - LCSW/Clinical items should emphasize vignette-based reasoning, clinical judgment, assessment, DSM-informed diagnosis, risk assessment, treatment planning, intervention, therapeutic relationship, boundaries, confidentiality, mandated reporting, supervision, and ethical clinical judgment.
-- For LCSW/Clinical, rewrite "What is", "Define", or "Which disorder" stems into clinical scenarios unless recall is explicitly selected.
+- For LCSW/Clinical, rewrite "What is", "Define", or "Which disorder" stems into clinical scenarios. Recall-only items are disabled for this project.
+- Do not create generic psychology questions. Keep every LCSW/Clinical question within social work scope and never require prescribing medication or decisions outside social work scope.
 - Rationale style must explain why the correct answer is best and why each distractor is less appropriate.
 - Distractors must be plausible at the selected Social Work exam level and must not shift to another scope of practice.
 
@@ -151,11 +156,12 @@ Strict alignment and quality rules:
 - Target blueprint_alignment_score must be 90 or higher.
 - Reject internally and regenerate any candidate that is weakly aligned, generic, or off-topic before returning it.
 - Match the exact selected exam track scope and expected reasoning level.
+- Generate medium or hard questions only. Easy questions are not allowed.
 - Do not mix BSW, MSW/LMSW, and LCSW levels.
 - Do not mix NCLEX-RN and NCLEX-PN levels.
 - Do not create generic healthcare, social work, psychology, nursing, or counseling questions.
 - Target professional exam-level difficulty quality of 80 or higher.
-- Avoid simple recall unless the selected cognitive level mix requires recall.
+- Avoid simple recall. Recall-only stems are disabled for this project.
 - Prefer application, analysis, clinical judgment, ethics, safety, prioritization, and scenario-based reasoning when appropriate.
 - Each question must test one clear concept.
 - Each question must have exactly four answer options.
@@ -189,7 +195,7 @@ Return exactly this JSON shape:
       "option_c_rationale": "string",
       "option_d_rationale": "string",
       "test_taking_tip": "string",
-      "difficulty": "easy",
+      "difficulty": "medium",
       "cognitive_level": "application",
       "topic": "string",
       "subtopic": "string",

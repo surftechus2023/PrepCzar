@@ -72,6 +72,7 @@ export interface Database {
           full_name: string;
           official_source_url: string | null;
           official_exam_description: string | null;
+          aswb_exam_level: string | null;
           active: boolean;
           display_order: number;
           created_at: string;
@@ -86,6 +87,7 @@ export interface Database {
           full_name?: string;
           official_source_url?: string | null;
           official_exam_description?: string | null;
+          aswb_exam_level?: string | null;
           active?: boolean;
           display_order?: number;
         };
@@ -99,8 +101,41 @@ export interface Database {
           full_name?: string;
           official_source_url?: string | null;
           official_exam_description?: string | null;
+          aswb_exam_level?: string | null;
           active?: boolean;
           display_order?: number;
+        };
+      };
+      question_blueprint_guidelines: {
+        Row: {
+          id: string;
+          exam_track_id: string;
+          cognitive_level: string;
+          question_style_guideline: string;
+          allowed_question_types: string[];
+          prohibited_question_types: string[];
+          difficulty_rules: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          exam_track_id: string;
+          cognitive_level: string;
+          question_style_guideline?: string;
+          allowed_question_types?: string[];
+          prohibited_question_types?: string[];
+          difficulty_rules?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          exam_track_id?: string;
+          cognitive_level?: string;
+          question_style_guideline?: string;
+          allowed_question_types?: string[];
+          prohibited_question_types?: string[];
+          difficulty_rules?: Json;
+          created_at?: string;
         };
       };
       exams: {
@@ -823,6 +858,7 @@ export interface Database {
 export type User = Database['public']['Tables']['users']['Row'];
 export type ExamCategory = Database['public']['Tables']['exam_categories']['Row'];
 export type ExamTrack = Database['public']['Tables']['exam_tracks']['Row'];
+export type QuestionBlueprintGuideline = Database['public']['Tables']['question_blueprint_guidelines']['Row'];
 export type Exam = Database['public']['Tables']['exams']['Row'];
 export type Topic = Database['public']['Tables']['topics']['Row'];
 export type Subtopic = Database['public']['Tables']['subtopics']['Row'];

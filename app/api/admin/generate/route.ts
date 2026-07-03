@@ -30,7 +30,7 @@ function localizedValue(item: any, base: string, locale: 'en' | 'es' | 'fr', ...
 }
 
 function normalizeDifficulty(value: unknown) {
-  return ['easy', 'medium', 'hard'].includes(String(value)) ? String(value) : 'medium';
+  return String(value) === 'hard' ? 'hard' : 'medium';
 }
 
 function normalizeCorrectOption(value: unknown) {
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
     const [trackRes, topicRes] = await Promise.all([
       supabaseAdmin
         .from('exam_tracks')
-        .select('id, name, full_name, category_id')
+        .select('id, name, full_name, slug, category_id')
         .eq('id', parsedBody.examTrackId)
         .eq('active', true)
         .single(),
@@ -84,6 +84,11 @@ export async function POST(req: NextRequest) {
     }
 
     const trackName = trackRes.data.full_name || trackRes.data.name;
+    const isSocialWorkTrack = /\b(bsw|msw|lmsw|lcsw|social work|clinical social)\b/i.test([
+      trackRes.data.slug,
+      trackRes.data.name,
+      trackRes.data.full_name,
+    ].filter(Boolean).join(' '));
     const examTrackRules = getExamTrackRules(trackName);
     examName = trackName;
     const topicTitle = topicRes.data.title;
@@ -93,6 +98,13 @@ export async function POST(req: NextRequest) {
     let duplicateCount = 0;
 
     if (parsedBody.type === 'mcq') {
+      if (isSocialWorkTrack) {
+        return NextResponse.json(
+          { error: 'Social Work MCQ generation must use the blueprint-aware AI Question Generation page.' },
+          { status: 400 }
+        );
+      }
+
       const generated = await generateMCQs(trackName, topicTitle, Math.min(parsedBody.count, 25));
       const arr = Array.isArray(generated) ? generated : Object.values(generated);
       if (arr.length === 0) throw new Error('OpenAI returned zero MCQ questions.');
@@ -148,7 +160,7 @@ export async function POST(req: NextRequest) {
           if (
             checked.result.integrity_status !== 'needs_metadata'
             && (
-              checked.result.blueprint_alignment_score < 90
+              checked.result.blueprint_alignment_score < 85
               || checked.result.difficulty_quality_score < examTrackRules.minimumDifficultyQualityScore
               || checked.result.integrity_score < 85
             )

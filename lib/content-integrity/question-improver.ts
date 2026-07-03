@@ -6,6 +6,7 @@ import { generatedQuestionSchema, type GeneratedQuestion } from '@/lib/openai/qu
 import type { Question } from '@/types/database';
 
 const MAX_IMPROVEMENT_ATTEMPTS = 2;
+export const CONTENT_IMPROVEMENT_MODEL = process.env.CONTENT_IMPROVEMENT_MODEL || 'gpt-5.5';
 
 interface ImprovementMetadata {
   examTrackId: string;
@@ -35,7 +36,7 @@ interface ImprovementMetadata {
     sample_style_guidance?: string | null;
   } | null;
   intendedCognitiveLevel?: string | null;
-  intendedDifficulty?: 'easy' | 'medium' | 'hard' | null;
+  intendedDifficulty?: 'medium' | 'hard' | null;
 }
 
 interface ImproveGeneratedQuestionInput {
@@ -213,7 +214,7 @@ Exam-track-specific rewrite rules:
 ${formatExamTrackRulesForPrompt(metadata.examTrackName)}
 
 Current scores:
-- blueprint_alignment_score: ${integrityResult.blueprint_alignment_score} (target 90+)
+- blueprint_alignment_score: ${integrityResult.blueprint_alignment_score} (target 85+)
 - difficulty_quality_score: ${integrityResult.difficulty_quality_score} (target 80+)
 - integrity_score: ${integrityResult.integrity_score} (target 85+)
 - integrity_status: ${integrityResult.integrity_status}
@@ -228,9 +229,10 @@ Rewrite requirements:
 - Meaningfully rewrite weak items; do not make only small wording edits.
 - Keep the same selected exam track, topic, subtopic, learning objective, intended cognitive level, and intended difficulty.
 - Judge and improve blueprint alignment only against the provided exam blueprint metadata, not general model knowledge.
-- If blueprint_alignment_score is below 90, rewrite the item to more directly test the provided learning objective and blueprint reference text.
+- If blueprint_alignment_score is below 85, rewrite the item to more directly test the provided applied knowledge statement, learning objective, and blueprint reference text.
 - Make the clinical/professional scenario clearly match the provided blueprint text.
-- If this is an LCSW recall-style item, rewrite it as a clinical case vignette testing assessment priority, best next step, differential diagnosis, ethical decision-making, risk/safety judgment, or intervention planning.
+- Rewrite easy, recall-style, or generic Social Work items into medium or hard scenario-based items.
+- If this is an LCSW/Clinical item, rewrite it as a clinical case vignette testing differential diagnosis, assessment priority, risk assessment, ethical decision-making, best next step, treatment planning, or clinical intervention choice.
 - If this is an NCLEX-RN item, rewrite it toward clinical judgment, safety, prioritization, delegation, or nursing-process reasoning.
 - If this is an NCLEX-PN item, preserve PN scope and use safety/basic care/reporting/escalation reasoning.
 - Do not make it generic.
@@ -247,11 +249,13 @@ Rewrite requirements:
 - For LMSW/MSW, use graduate-level application and professional reasoning.
 - For LCSW/Clinical, prefer case-vignette clinical judgment, risk/safety, diagnosis-informed assessment, intervention planning, ethics, confidentiality, boundaries, or mandated-reporting reasoning.
 - Use BEST, FIRST, NEXT, or MOST qualifiers when they improve ASWB-style decision-making.
+- Preserve Social Work scope. Do not require prescribing medication or decisions outside social work scope.
+- Set difficulty to medium or hard only; easy is prohibited.
 
 Return only one JSON object matching the generated question schema.`;
 
   const completion = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: CONTENT_IMPROVEMENT_MODEL,
     temperature: 0.25,
     messages: [
       {
@@ -302,6 +306,7 @@ export async function improveGeneratedQuestionOnce(input: ImproveGeneratedQuesti
 }
 
 function storedQuestionToGenerated(question: Question, metadata: ImprovementMetadata): GeneratedQuestion {
+  const effectiveDifficulty = question.difficulty === 'hard' ? 'hard' : 'medium';
   return {
     question: question.question_en,
     option_a: question.option_a_en,
@@ -315,7 +320,7 @@ function storedQuestionToGenerated(question: Question, metadata: ImprovementMeta
     option_c_rationale: question.option_c_rationale_en || '',
     option_d_rationale: question.option_d_rationale_en || '',
     test_taking_tip: question.test_taking_tip_en || '',
-    difficulty: question.difficulty,
+    difficulty: effectiveDifficulty,
     cognitive_level: (question.cognitive_level || 'application') as GeneratedQuestion['cognitive_level'],
     topic: firstText(question.source_topic, metadata.topicTitle, metadata.subtopic, 'Selected topic'),
     subtopic: firstText(question.subtopic, metadata.subtopic, metadata.topicTitle, 'Selected subtopic'),
@@ -328,7 +333,7 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
   const { checkAndUpdateQuestionIntegrity } = await import('@/lib/content-integrity/question-integrity-checker');
   const { data, error } = await supabaseAdmin
     .from('questions')
-    .select('*, exam_track:exam_tracks(id, name, full_name, slug, official_source_url, official_exam_description), topic:topics(id, title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(id, title, description, learning_objective, official_blueprint_text), social_work_blueprint_item:social_work_blueprint_items(id, exam_level, major_content_area, percentage_weight, competency_section, applied_knowledge_statement, cognitive_level_guidance, official_blueprint_text, sample_style_guidance)')
+    .select('*, exam_track:exam_tracks(id, name, full_name, slug, official_source_url, official_exam_description, aswb_exam_level), topic:topics(id, title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(id, title, description, learning_objective, official_blueprint_text), social_work_blueprint_item:social_work_blueprint_items(id, exam_level, major_content_area, percentage_weight, competency_section, applied_knowledge_statement, cognitive_level_guidance, official_blueprint_text, sample_style_guidance)')
     .eq('id', questionId)
     .single();
 
@@ -400,7 +405,7 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
     ),
     socialWorkBlueprintItem: question.social_work_blueprint_item || null,
     intendedCognitiveLevel: question.intended_cognitive_level || question.cognitive_level,
-    intendedDifficulty: question.difficulty,
+    intendedDifficulty: question.difficulty === 'hard' ? 'hard' : 'medium',
   };
 
   if (!metadata.blueprintReferenceText) {
@@ -462,7 +467,7 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
   if (
     nextAttempts >= MAX_IMPROVEMENT_ATTEMPTS
     && (
-      checked.result.blueprint_alignment_score < 90
+      checked.result.blueprint_alignment_score < 85
       || checked.result.difficulty_quality_score < 80
       || checked.result.integrity_score < 85
     )
@@ -471,7 +476,7 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
       .from('questions')
       .update({ integrity_status: 'needs_human_review' })
       .eq('id', questionId)
-      .select('*, exam_track:exam_tracks(name, slug), topic:topics(title)')
+      .select('*, exam_track:exam_tracks(name, slug, official_source_url, official_exam_description, aswb_exam_level), topic:topics(title, description, official_blueprint_text, official_weight_percent), subtopic_record:subtopics(title, description, learning_objective, official_blueprint_text), social_work_blueprint_item:social_work_blueprint_items(id, exam_level, major_content_area, percentage_weight, competency_section, applied_knowledge_statement, cognitive_level_guidance, official_blueprint_text, sample_style_guidance)')
       .single();
 
     if (marked.error) throw new Error(marked.error.message);
