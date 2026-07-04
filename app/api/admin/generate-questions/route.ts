@@ -16,6 +16,7 @@ import {
   improveGeneratedQuestionOnce,
 } from '@/lib/content-integrity/question-improver';
 import { getExamTrackRules, isRecallOnlyStem } from '@/lib/content-generation/exam-track-rules';
+import { buildBlueprintContext } from '@/lib/blueprint/blueprint-context-builder';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,6 +62,11 @@ function isSocialWorkTrack(track: { name?: string | null; full_name?: string | n
     track.name,
     track.full_name,
   ].filter(Boolean).join(' '));
+}
+
+function asSocialWorkExamLevel(value: string | null | undefined): 'bsw' | 'lmsw_msw' | 'lcsw_clinical' | null {
+  if (value === 'bsw' || value === 'lmsw_msw' || value === 'lcsw_clinical') return value;
+  return null;
 }
 
 export async function POST(req: NextRequest) {
@@ -165,37 +171,26 @@ export async function POST(req: NextRequest) {
       selectedSubtopic = blueprintSubtopicData;
     }
 
-    if (socialWorkTrack) {
-      const missingBlueprintFields = [
-        ['official source URL', trackRes.data.official_source_url],
-        ['exam description', trackRes.data.official_exam_description],
-        ['ASWB exam level', trackRes.data.aswb_exam_level || selectedBlueprintItem?.exam_level],
-        ['topic blueprint text', topicRes.data.official_blueprint_text],
-        ['applied knowledge statement', selectedBlueprintItem?.applied_knowledge_statement],
-        ['competency section', selectedBlueprintItem?.competency_section],
-        ['question-writing guideline', selectedBlueprintItem?.sample_style_guidance],
-        ['blueprint reference text', selectedBlueprintItem?.official_blueprint_text],
-      ].filter(([, value]) => typeof value !== 'string' || !value.trim());
+    const blueprintContext = await buildBlueprintContext(supabaseAdmin, {
+      examTrackId: body.examTrackId,
+      topicId: body.topicId,
+      subtopicId: selectedSubtopic?.id || body.subtopicId || null,
+      socialWorkBlueprintItemId: selectedBlueprintItem?.id || body.socialWorkBlueprintItemId || null,
+      difficultyTarget: body.intendedDifficulty || 'medium',
+      cognitiveLevelTarget: body.intendedCognitiveLevel || 'application',
+    });
 
-      if (missingBlueprintFields.length) {
-        return NextResponse.json(
-          { error: `Missing Social Work blueprint metadata: ${missingBlueprintFields.map(([field]) => field).join(', ')}` },
-          { status: 400 }
-        );
-      }
+    if (socialWorkTrack && blueprintContext.missingMetadata.length) {
+      return NextResponse.json(
+        { error: `Missing Social Work blueprint metadata: ${blueprintContext.missingMetadata.join(', ')}` },
+        { status: 400 }
+      );
     }
 
-    const effectiveSubtopic = selectedSubtopic?.title || selectedBlueprintItem?.competency_section || body.subtopic;
-    const effectiveLearningObjective = selectedBlueprintItem?.applied_knowledge_statement || selectedSubtopic?.learning_objective || body.learningObjective;
-    const blueprintReferenceText = [
-      selectedBlueprintItem?.official_blueprint_text,
-      selectedBlueprintItem?.applied_knowledge_statement,
-      selectedBlueprintItem?.competency_section,
-      selectedBlueprintItem?.major_content_area,
-      selectedSubtopic?.official_blueprint_text,
-      topicRes.data.official_blueprint_text,
-      effectiveLearningObjective,
-    ].filter((value) => typeof value === 'string' && value.trim()).join('\n\n');
+    const effectiveSubtopic = blueprintContext.competencySection || selectedSubtopic?.title || selectedBlueprintItem?.competency_section || body.subtopic;
+    const effectiveLearningObjective = blueprintContext.learningObjective || selectedBlueprintItem?.applied_knowledge_statement || selectedSubtopic?.learning_objective || body.learningObjective;
+    const blueprintReferenceText = blueprintContext.officialBlueprintText;
+    const socialWorkExamLevel = asSocialWorkExamLevel(blueprintContext.aswbExamLevel || selectedBlueprintItem?.exam_level);
 
     const { data: batch, error: batchError } = await supabaseAdmin
       .from('ai_generation_batches')
@@ -243,29 +238,29 @@ export async function POST(req: NextRequest) {
       const generated = await generateQuestions({
         examTrackId: body.examTrackId,
         topicId: body.topicId,
-        subtopicId: body.subtopicId || null,
+        subtopicId: blueprintContext.subtopicId || null,
         examTrackName: examName,
         officialSourceUrl: trackRes.data.official_source_url,
-        officialExamDescription: trackRes.data.official_exam_description,
+        officialExamDescription: blueprintContext.officialExamDescription,
         topicTitle: topicRes.data.title,
-        topicDescription: topicRes.data.description,
-        topicOfficialBlueprintText: topicRes.data.official_blueprint_text,
-        topicWeightPercent: topicRes.data.official_weight_percent,
+        topicDescription: blueprintContext.topicDescription,
+        topicOfficialBlueprintText: blueprintContext.topicOfficialBlueprintText,
+        topicWeightPercent: blueprintContext.majorContentWeight,
         subtopic: effectiveSubtopic,
-        subtopicDescription: selectedSubtopic?.description,
-        subtopicOfficialBlueprintText: selectedSubtopic?.official_blueprint_text,
+        subtopicDescription: blueprintContext.subtopicDescription,
+        subtopicOfficialBlueprintText: blueprintContext.subtopicOfficialBlueprintText,
         learningObjective: effectiveLearningObjective,
         blueprintReferenceText,
-        socialWorkBlueprintItemId: selectedBlueprintItem?.id || null,
-        socialWorkExamLevel: selectedBlueprintItem?.exam_level || null,
-        majorContentArea: selectedBlueprintItem?.major_content_area || null,
-        percentageWeight: selectedBlueprintItem?.percentage_weight ?? null,
-        competencySection: selectedBlueprintItem?.competency_section || null,
-        appliedKnowledgeStatement: selectedBlueprintItem?.applied_knowledge_statement || null,
-        cognitiveLevelGuidance: selectedBlueprintItem?.cognitive_level_guidance || null,
-        sampleStyleGuidance: selectedBlueprintItem?.sample_style_guidance || null,
-        intendedCognitiveLevel: body.intendedCognitiveLevel || null,
-        intendedDifficulty: body.intendedDifficulty || null,
+        socialWorkBlueprintItemId: blueprintContext.socialWorkBlueprintItemId || null,
+        socialWorkExamLevel,
+        majorContentArea: blueprintContext.majorContentArea || null,
+        percentageWeight: blueprintContext.majorContentWeight,
+        competencySection: blueprintContext.competencySection || null,
+        appliedKnowledgeStatement: blueprintContext.appliedKnowledgeStatement || null,
+        cognitiveLevelGuidance: selectedBlueprintItem?.cognitive_level_guidance || blueprintContext.cognitiveLevelTarget,
+        sampleStyleGuidance: blueprintContext.questionWritingGuidelines || null,
+        intendedCognitiveLevel: blueprintContext.cognitiveLevelTarget,
+        intendedDifficulty: blueprintContext.difficultyTarget,
         quantity,
         difficultyMix: requestedDifficultyMix,
         cognitiveLevelMix: body.cognitiveLevelMix,
@@ -313,20 +308,20 @@ export async function POST(req: NextRequest) {
             topicId: body.topicId,
             examTrackName: examName,
             officialSourceUrl: trackRes.data.official_source_url,
-            officialExamDescription: trackRes.data.official_exam_description,
+            officialExamDescription: blueprintContext.officialExamDescription,
             topicTitle: topicRes.data.title,
-            topicDescription: topicRes.data.description,
-            topicOfficialBlueprintText: topicRes.data.official_blueprint_text,
-            topicWeightPercent: topicRes.data.official_weight_percent,
-            subtopicId: body.subtopicId || null,
+            topicDescription: blueprintContext.topicDescription,
+            topicOfficialBlueprintText: blueprintContext.topicOfficialBlueprintText,
+            topicWeightPercent: blueprintContext.majorContentWeight,
+            subtopicId: blueprintContext.subtopicId || null,
             subtopic: effectiveSubtopic,
-            subtopicDescription: selectedSubtopic?.description,
-            subtopicOfficialBlueprintText: selectedSubtopic?.official_blueprint_text,
+            subtopicDescription: blueprintContext.subtopicDescription,
+            subtopicOfficialBlueprintText: blueprintContext.subtopicOfficialBlueprintText,
             learningObjective: effectiveLearningObjective,
             blueprintReferenceText,
             socialWorkBlueprintItem: selectedBlueprintItem,
-            intendedCognitiveLevel: body.intendedCognitiveLevel || null,
-            intendedDifficulty: body.intendedDifficulty || null,
+            intendedCognitiveLevel: blueprintContext.cognitiveLevelTarget,
+            intendedDifficulty: blueprintContext.difficultyTarget,
           },
           existingQuestions.map((existing, index) => ({
             id: `existing-${index}`,
@@ -355,20 +350,20 @@ export async function POST(req: NextRequest) {
               topicId: body.topicId,
               examTrackName: examName,
               officialSourceUrl: trackRes.data.official_source_url,
-              officialExamDescription: trackRes.data.official_exam_description,
+              officialExamDescription: blueprintContext.officialExamDescription,
               topicTitle: topicRes.data.title,
-              topicDescription: topicRes.data.description,
-              topicOfficialBlueprintText: topicRes.data.official_blueprint_text,
-              topicWeightPercent: topicRes.data.official_weight_percent,
-              subtopicId: body.subtopicId || null,
+              topicDescription: blueprintContext.topicDescription,
+              topicOfficialBlueprintText: blueprintContext.topicOfficialBlueprintText,
+              topicWeightPercent: blueprintContext.majorContentWeight,
+              subtopicId: blueprintContext.subtopicId || null,
               subtopic: effectiveSubtopic,
-              subtopicDescription: selectedSubtopic?.description,
-              subtopicOfficialBlueprintText: selectedSubtopic?.official_blueprint_text,
+              subtopicDescription: blueprintContext.subtopicDescription,
+              subtopicOfficialBlueprintText: blueprintContext.subtopicOfficialBlueprintText,
               learningObjective: effectiveLearningObjective,
               blueprintReferenceText,
               socialWorkBlueprintItem: selectedBlueprintItem,
-              intendedCognitiveLevel: body.intendedCognitiveLevel || null,
-              intendedDifficulty: body.intendedDifficulty || null,
+              intendedCognitiveLevel: blueprintContext.cognitiveLevelTarget,
+              intendedDifficulty: blueprintContext.difficultyTarget,
             },
             integrityResult: integrity,
           });
@@ -392,13 +387,13 @@ export async function POST(req: NextRequest) {
         const row = {
           exam_track_id: body.examTrackId,
           topic_id: body.topicId,
-          subtopic_id: body.subtopicId || null,
-          social_work_blueprint_item_id: selectedBlueprintItem?.id || null,
-          blueprint_content_area: selectedBlueprintItem?.major_content_area || null,
-          blueprint_competency_section: selectedBlueprintItem?.competency_section || null,
-          applied_knowledge_statement: selectedBlueprintItem?.applied_knowledge_statement || null,
-          question_writing_guideline: selectedBlueprintItem?.sample_style_guidance || null,
-          intended_cognitive_level: body.intendedCognitiveLevel || null,
+          subtopic_id: blueprintContext.subtopicId || null,
+          social_work_blueprint_item_id: blueprintContext.socialWorkBlueprintItemId || null,
+          blueprint_content_area: blueprintContext.majorContentArea || null,
+          blueprint_competency_section: blueprintContext.competencySection || null,
+          applied_knowledge_statement: blueprintContext.appliedKnowledgeStatement || null,
+          question_writing_guideline: blueprintContext.questionWritingGuidelines || null,
+          intended_cognitive_level: blueprintContext.cognitiveLevelTarget,
           blueprint_reference_text: blueprintReferenceText || null,
           question_en: question.question,
           option_a_en: question.option_a,

@@ -58,7 +58,7 @@ Blueprint alignment:
 - `70-79`: related but generic or weak
 - below `70`: off-topic or not tied to the supplied blueprint
 
-Passing requires `blueprint_alignment_score >= 85`, `difficulty_quality_score >= 80`, and `integrity_score >= 85`. Missing blueprint metadata returns `needs_metadata`. Easy questions return `needs_improvement`.
+The legacy integrity pass requires `blueprint_alignment_score >= 85`, `difficulty_quality_score >= 80`, and `integrity_score >= 85`. The GPT editorial publication gate is stricter: blueprint `>=90`, difficulty `>=85`, integrity `>=90`, and committee approval. Missing blueprint metadata returns `needs_metadata`. Easy questions return `needs_improvement`.
 
 ## Auto-Improve
 
@@ -70,4 +70,4 @@ The rewrite must preserve exam track, major content area, competency, applied kn
 
 ## Admin Fixes
 
-If review shows `Missing blueprint metadata - update topic/subtopic before generating or reviewing`, update the stored topic/subtopic or Social Work blueprint item first, then rerun integrity. Do not publish legacy Social Work questions until metadata exists and integrity passes.
+If review shows `Missing blueprint metadata - update topic/subtopic before generating or reviewing`, update the stored topic/subtopic or Social Work blueprint item first, then rerun integrity and the GPT editorial stages. Do not publish legacy Social Work questions until metadata exists, final scores pass, and committee review approves.

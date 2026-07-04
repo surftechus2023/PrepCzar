@@ -2,7 +2,7 @@
 
 PrepCzar uses this generated-question workflow:
 
-`stored blueprint metadata -> generator prompt -> deterministic integrity check -> admin review -> optional auto-improve`
+`stored blueprint metadata -> generator prompt -> editorial review -> auto-rewrite -> final review -> committee review -> publish gate`
 
 This is a pre-review quality-control layer. It does not replace human subject-matter review.
 
@@ -82,11 +82,18 @@ Blueprint alignment:
 - `70-79`: related but generic or weak
 - below `70`: off-topic or not tied to the supplied blueprint
 
-Passing requires:
+Legacy deterministic integrity passing requires:
 
 - `blueprint_alignment_score >= 85`
 - `difficulty_quality_score >= 80`
 - `integrity_score >= 85`
+
+The GPT editorial publish gate is stricter:
+
+- `blueprint_alignment_score >= 90`
+- `difficulty_quality_score >= 85`
+- `integrity_score >= 90`
+- `committee_status='approved'`
 
 Statuses:
 
@@ -96,9 +103,18 @@ Statuses:
 - `needs_human_review`: auto-improve exhausted without meeting thresholds
 - `failed`: off-topic, highly duplicative, or otherwise not salvageable automatically
 
-## Auto-Improve
+## GPT Editorial Pipeline
 
-Auto-improve uses `CONTENT_IMPROVEMENT_MODEL` and receives:
+`/admin/review-questions` exposes staged GPT actions:
+
+- `Run Editorial Review`: runs Blueprint SME, Difficulty/Cognitive, Distractor/Rationale, Psychometrician, Bias/Fairness, and Security/Originality reviewers against the same stored blueprint context used at generation time.
+- `Auto Rewrite`: substantially rewrites failed items using failure reasons, scores, distractor/bias flags, rewrite recommendations, and blueprint context.
+- `Run Final Review`: performs an independent GPT review with final blueprint, difficulty, distractor, psychometric, bias, security, and integrity scores.
+- `Run Committee Review`: runs GPT Clinical SME, Psychometrician, and Exam Chair roles; publication requires committee approval.
+
+## Auto-Improve And Auto-Rewrite
+
+Auto-improve uses `CONTENT_IMPROVEMENT_MODEL`; the editorial auto-rewrite uses `CONTENT_REWRITE_MODEL`. Both receive:
 
 - original question
 - failed scores
@@ -124,7 +140,8 @@ To fix missing metadata:
 2. Backfill legacy question context when possible.
 3. Click `Rerun Integrity`.
 4. Use `Auto-Improve and Recheck` for weak but metadata-complete questions.
-5. Publish only when integrity passes.
+5. Run editorial review, final review, and committee review.
+6. Publish only when the final publication checklist passes.
 
 Legacy `Psychopathology & Diagnosis` Social Work questions are backfilled to the LCSW/Clinical DSM-5-TR assessment blueprint item when possible.
 
@@ -135,5 +152,14 @@ Defaults:
 - `CONTENT_GENERATION_MODEL=gpt-4.1-mini`
 - `CONTENT_INTEGRITY_MODEL=gpt-5.5`
 - `CONTENT_IMPROVEMENT_MODEL=gpt-5.5`
+- `CONTENT_BLUEPRINT_REVIEW_MODEL=gpt-5.5`
+- `CONTENT_DIFFICULTY_MODEL=gpt-5.5`
+- `CONTENT_DISTRACTOR_MODEL=gpt-5.5`
+- `CONTENT_PSYCHOMETRIC_MODEL=gpt-5.5`
+- `CONTENT_BIAS_MODEL=gpt-5.5`
+- `CONTENT_SECURITY_MODEL=gpt-5.5`
+- `CONTENT_REWRITE_MODEL=gpt-5.5`
+- `CONTENT_FINAL_REVIEW_MODEL=gpt-5.5`
+- `CONTENT_COMMITTEE_MODEL=gpt-5.5`
 
-The current integrity checker is deterministic but keeps `CONTENT_INTEGRITY_MODEL` reserved for AI-assisted review expansion.
+See `docs/AI_EDITORIAL_PIPELINE.md` for the full staged workflow.

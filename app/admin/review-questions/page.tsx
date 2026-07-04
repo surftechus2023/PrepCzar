@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { authenticatedFetch } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import type { ExamTrack, Question, SocialWorkBlueprintItem, Topic } from '@/types/database';
+import type { ExamTrack, Question, QuestionCommitteeReview, QuestionRevision, SocialWorkBlueprintItem, Topic } from '@/types/database';
 
 interface ReviewQuestion extends Question {
   exam_track?: Pick<ExamTrack, 'name' | 'slug' | 'official_source_url' | 'official_exam_description' | 'aswb_exam_level'>;
@@ -34,6 +34,8 @@ interface ReviewQuestion extends Question {
     | 'official_blueprint_text'
     | 'sample_style_guidance'
   > | null;
+  question_revisions?: Pick<QuestionRevision, 'id' | 'revision_number' | 'revision_type' | 'failure_reasons' | 'improvement_notes' | 'model_used' | 'created_at'>[];
+  question_committee_reviews?: Pick<QuestionCommitteeReview, 'id' | 'reviewer_role' | 'model_used' | 'vote' | 'score' | 'reason' | 'required_changes' | 'created_at'>[];
 }
 
 type EditState = Pick<
@@ -62,6 +64,7 @@ export default function ReviewQuestionsPage() {
   const [editState, setEditState] = useState<EditState | null>(null);
   const [checkingId, setCheckingId] = useState<string | null>(null);
   const [improvingId, setImprovingId] = useState<string | null>(null);
+  const [pipelineAction, setPipelineAction] = useState<{ questionId: string; action: string } | null>(null);
   const { toast } = useToast();
 
   const loadQuestions = useCallback(async () => {
@@ -115,23 +118,37 @@ export default function ReviewQuestionsPage() {
       return;
     }
 
-    const canPublish = question.integrity_status === 'passed' || question.integrity_override;
-    const values: Partial<Question> = { reviewed: true, active: true };
+    const canPublish = question.integrity_status === 'passed'
+      && question.committee_status === 'approved'
+      && (question.blueprint_alignment_score ?? 0) >= 90
+      && (question.difficulty_quality_score ?? 0) >= 85
+      && (question.integrity_score ?? 0) >= 90;
+    let overrideReason: string | undefined;
 
     if (!canPublish) {
-      const reason = window.prompt('Integrity check has not passed. Enter an admin override reason to publish anyway:');
+      const reason = window.prompt('Publication gate has not passed. Enter an admin override reason to publish anyway:');
       if (!reason?.trim()) {
-        toast({ title: 'Publish canceled', description: 'Override reason is required when integrity has not passed.' });
+        toast({ title: 'Publish canceled', description: 'Override reason is required when the publication gate has not passed.' });
         return;
       }
-      values.integrity_override = true;
-      values.integrity_override_reason = reason.trim();
+      overrideReason = reason.trim();
     }
 
-    if (await updateQuestion(question.id, values)) {
-      setQuestions((current) => current.filter((item) => item.id !== question.id));
-      toast({ title: 'Question published' });
+    const response = await authenticatedFetch('/api/admin/publish-question', {
+      method: 'POST',
+      body: JSON.stringify({ question_id: question.id, override_reason: overrideReason }),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      toast({ title: 'Publish failed', description: data.error, variant: 'destructive' });
+      return;
     }
+
+    if (data.question) {
+      setQuestions((current) => current.filter((item) => item.id !== question.id));
+    }
+    toast({ title: data.overridden ? 'Question published with override' : 'Question published' });
   }
 
   async function reject(question: ReviewQuestion) {
@@ -219,6 +236,29 @@ export default function ReviewQuestionsPage() {
     toast({ title: 'Auto-improve complete', description: `Score ${data.score ?? 'n/a'} - ${data.status ?? 'unknown'}` });
   }
 
+  async function runPipelineAction(question: ReviewQuestion, endpoint: string, action: string) {
+    setPipelineAction({ questionId: question.id, action });
+    const response = await authenticatedFetch(endpoint, {
+      method: 'POST',
+      body: JSON.stringify({ question_id: question.id }),
+    });
+    const data = await response.json();
+    setPipelineAction(null);
+
+    if (!response.ok) {
+      toast({ title: `${action} failed`, description: data.error, variant: 'destructive' });
+      return;
+    }
+
+    const updatedQuestion = data.question || data.review?.question;
+    if (updatedQuestion) {
+      setQuestions((current) => current.map((item) => item.id === question.id ? updatedQuestion : item));
+    } else {
+      await loadQuestions();
+    }
+    toast({ title: `${action} complete`, description: data.status ? `Status: ${data.status}` : undefined });
+  }
+
   function setEditField<K extends keyof EditState>(key: K, value: EditState[K]) {
     setEditState((current) => current ? { ...current, [key]: value } : current);
   }
@@ -227,9 +267,21 @@ export default function ReviewQuestionsPage() {
     return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
   }
 
+  function objectValue(value: unknown, key: string) {
+    return value && typeof value === 'object' && key in value
+      ? (value as Record<string, unknown>)[key]
+      : undefined;
+  }
+
+  function reviewerSummary(question: ReviewQuestion, key: string) {
+    const review = objectValue(question.editorial_review, key);
+    if (!review || typeof review !== 'object') return null;
+    return review as Record<string, unknown>;
+  }
+
   function integrityBadgeVariant(status: Question['integrity_status']) {
     if (status === 'passed') return 'default';
-    if (status === 'failed' || status === 'needs_human_review') return 'destructive';
+    if (status === 'failed' || status === 'needs_human_review' || status === 'rejected') return 'destructive';
     return 'secondary';
   }
 
@@ -415,6 +467,11 @@ export default function ReviewQuestionsPage() {
                           <p><span className="font-medium">Integrity score:</span> {question.integrity_score ?? 0}</p>
                           <p><span className="font-medium">Blueprint alignment:</span> {question.blueprint_alignment_score ?? 0}</p>
                           <p><span className="font-medium">Difficulty quality:</span> {question.difficulty_quality_score ?? 0}</p>
+                          <p><span className="font-medium">Distractors:</span> {question.distractor_score ?? 0}</p>
+                          <p><span className="font-medium">Rationales:</span> {question.rationale_score ?? 0}</p>
+                          <p><span className="font-medium">Psychometric:</span> {question.psychometric_score ?? 0}</p>
+                          <p><span className="font-medium">Bias/fairness:</span> {question.bias_score ?? 0}</p>
+                          <p><span className="font-medium">Security/originality:</span> {question.security_score ?? 0}</p>
                           <p><span className="font-medium">Intended difficulty:</span> {question.difficulty}</p>
                           <p><span className="font-medium">Predicted difficulty:</span> {question.predicted_difficulty || 'Not checked'}</p>
                           <p><span className="font-medium">Intended cognitive level:</span> {question.intended_cognitive_level || question.cognitive_level || 'Not provided'}</p>
@@ -428,6 +485,8 @@ export default function ReviewQuestionsPage() {
                             ['Quality flags', flagList(question.quality_flags)],
                             ['Distractor flags', flagList(question.distractor_flags)],
                             ['Bias flags', flagList(question.bias_flags)],
+                            ['Failure reasons', flagList(question.failure_reasons)],
+                            ['Rewrite recommendations', flagList(question.rewrite_recommendations)],
                           ].map(([label, flags]) => (
                             <div key={label as string}>
                               <p className="font-medium">{label as string}</p>
@@ -460,6 +519,86 @@ export default function ReviewQuestionsPage() {
                           )}
                         </div>
                       </div>
+                      <div className="rounded-md border bg-muted/10 p-4 text-sm">
+                        <div className="flex items-center gap-2 font-medium mb-3">
+                          <ShieldCheck className="w-4 h-4" />
+                          GPT Editorial Pipeline
+                        </div>
+                        <div className="grid md:grid-cols-2 gap-3">
+                          {[
+                            ['Blueprint SME', 'blueprint'],
+                            ['Difficulty/Cognitive', 'difficulty'],
+                            ['Distractor/Rationale', 'distractor'],
+                            ['Psychometrician', 'psychometric'],
+                            ['Bias/Fairness', 'bias'],
+                            ['Security/Originality', 'security'],
+                          ].map(([label, key]) => {
+                            const review = reviewerSummary(question, key);
+                            const score = objectValue(review, 'score')
+                              ?? objectValue(review, `${key}_score`)
+                              ?? objectValue(review, key === 'blueprint' ? 'blueprint_alignment_score' : 'difficulty_quality_score')
+                              ?? 'Not run';
+                            return (
+                              <div key={key} className="rounded-md border p-3">
+                                <p className="font-medium">{label}</p>
+                                <p className="text-muted-foreground">
+                                  Score: {String(score)}
+                                </p>
+                                <p className="text-muted-foreground whitespace-pre-wrap">
+                                  {String(objectValue(review, 'explanation') || 'No reviewer explanation.')}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="grid md:grid-cols-2 gap-2 mt-4">
+                          <p><span className="font-medium">Final review status:</span> {question.final_review_status || 'pending'}</p>
+                          <p><span className="font-medium">Final integrity:</span> {question.final_integrity_score ?? 0}</p>
+                          <p><span className="font-medium">Committee status:</span> {question.committee_status || 'pending'}</p>
+                          <p><span className="font-medium">Committee average:</span> {question.committee_average_score ?? 'Not run'}</p>
+                        </div>
+                        <p className="mt-2 text-muted-foreground whitespace-pre-wrap">{question.final_review_notes || question.committee_review_notes || 'No final or committee notes yet.'}</p>
+                      </div>
+                      <div className="rounded-md border bg-muted/10 p-4 text-sm">
+                        <p className="font-medium mb-2">Revision History</p>
+                        {question.question_revisions?.length ? (
+                          <ul className="space-y-2 text-muted-foreground">
+                            {question.question_revisions.map((revision) => (
+                              <li key={revision.id}>
+                                Revision {revision.revision_number} — {revision.revision_type} via {revision.model_used || 'unknown model'} on {new Date(revision.created_at).toLocaleString()}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-muted-foreground">No rewrites recorded.</p>
+                        )}
+                      </div>
+                      <div className="rounded-md border bg-muted/10 p-4 text-sm">
+                        <p className="font-medium mb-2">Committee Reviews</p>
+                        {question.question_committee_reviews?.length ? (
+                          <div className="space-y-2">
+                            {question.question_committee_reviews.map((review) => (
+                              <div key={review.id} className="rounded-md border p-3">
+                                <p className="font-medium">{review.reviewer_role}: {review.vote} ({review.score})</p>
+                                <p className="text-muted-foreground whitespace-pre-wrap">{review.reason}</p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground">No committee review has been run.</p>
+                        )}
+                      </div>
+                      <div className="rounded-md border bg-muted/10 p-4 text-sm">
+                        <p className="font-medium mb-2">Publication Checklist</p>
+                        <ul className="list-disc pl-5 text-muted-foreground">
+                          <li>Blueprint metadata: {missingBlueprintMetadata.length ? 'missing' : 'complete'}</li>
+                          <li>Integrity status: {question.integrity_status}</li>
+                          <li>Blueprint score ≥ 90: {(question.blueprint_alignment_score ?? 0) >= 90 ? 'yes' : 'no'}</li>
+                          <li>Difficulty score ≥ 85: {(question.difficulty_quality_score ?? 0) >= 85 ? 'yes' : 'no'}</li>
+                          <li>Integrity score ≥ 90: {(question.integrity_score ?? 0) >= 90 ? 'yes' : 'no'}</li>
+                          <li>Committee approved: {question.committee_status === 'approved' ? 'yes' : 'no'}</li>
+                        </ul>
+                      </div>
                     </div>
                   )}
 
@@ -483,9 +622,25 @@ export default function ReviewQuestionsPage() {
                           {checkingId === question.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
                           Rerun Integrity
                         </Button>
+                        <Button size="sm" variant="outline" disabled={pipelineAction?.questionId === question.id} onClick={() => runPipelineAction(question, '/api/admin/run-editorial-review', 'Editorial review')}>
+                          {pipelineAction?.questionId === question.id && pipelineAction.action === 'Editorial review' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ShieldCheck className="w-4 h-4 mr-2" />}
+                          Run Editorial Review
+                        </Button>
                         <Button size="sm" variant="outline" disabled={improvingId === question.id || (question.improvement_attempts ?? 0) >= 2} onClick={() => autoImproveAndRecheck(question)}>
                           {improvingId === question.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
                           Auto-Improve and Recheck
+                        </Button>
+                        <Button size="sm" variant="outline" disabled={pipelineAction?.questionId === question.id || (question.improvement_attempts ?? 0) >= 2} onClick={() => runPipelineAction(question, '/api/admin/auto-rewrite-question', 'Auto rewrite')}>
+                          {pipelineAction?.questionId === question.id && pipelineAction.action === 'Auto rewrite' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                          Auto Rewrite
+                        </Button>
+                        <Button size="sm" variant="outline" disabled={pipelineAction?.questionId === question.id} onClick={() => runPipelineAction(question, '/api/admin/run-final-review', 'Final review')}>
+                          {pipelineAction?.questionId === question.id && pipelineAction.action === 'Final review' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                          Run Final Review
+                        </Button>
+                        <Button size="sm" variant="outline" disabled={pipelineAction?.questionId === question.id} onClick={() => runPipelineAction(question, '/api/admin/run-committee-review', 'Committee review')}>
+                          {pipelineAction?.questionId === question.id && pipelineAction.action === 'Committee review' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                          Run Committee Review
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => startEdit(question)}>
                           <Edit className="w-4 h-4 mr-2" />

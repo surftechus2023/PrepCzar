@@ -72,7 +72,9 @@ export async function GET(req: NextRequest) {
       .eq('reviewed', true);
 
     if (contentType === 'mcq') {
-      contentQuery = contentQuery.or('and(integrity_status.eq.passed,blueprint_alignment_score.gte.85,difficulty_quality_score.gte.80),integrity_override.eq.true');
+      contentQuery = contentQuery.or(
+        'and(integrity_status.eq.passed,committee_status.eq.approved,blueprint_alignment_score.gte.90,difficulty_quality_score.gte.85,integrity_score.gte.90),and(admin_override.eq.true,admin_override_reason.not.is.null,admin_override_by.not.is.null,admin_override_at.not.is.null)'
+      );
     }
 
     const { data: content, error: contentError } = await contentQuery.limit(LIMIT_BY_TYPE[contentType]);
