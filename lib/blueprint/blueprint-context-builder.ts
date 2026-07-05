@@ -80,6 +80,7 @@ export async function buildBlueprintContext(
 
   if (trackRes.error || !trackRes.data) throw new Error(trackRes.error?.message || 'Exam track not found.');
   if (topicRes.error || !topicRes.data) throw new Error(topicRes.error?.message || 'Topic not found.');
+  let topic = topicRes.data;
 
   let blueprintItem: any = null;
   if (input.socialWorkBlueprintItemId) {
@@ -92,6 +93,18 @@ export async function buildBlueprintContext(
 
     if (error) throw new Error(error.message);
     blueprintItem = data;
+  }
+
+  if (blueprintItem?.topic_id && !text(topic.official_blueprint_text)) {
+    const { data, error } = await supabaseAdmin
+      .from('topics')
+      .select('id, title, description, official_blueprint_text, official_weight_percent')
+      .eq('id', blueprintItem.topic_id)
+      .eq('exam_track_id', input.examTrackId)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    if (data?.official_blueprint_text) topic = data;
   }
 
   let subtopic: any = null;
@@ -120,26 +133,26 @@ export async function buildBlueprintContext(
   const trackName = text(trackRes.data.full_name) || text(trackRes.data.name);
   const context: BlueprintContext = {
     examTrackId: input.examTrackId,
-    topicId: input.topicId,
+    topicId: topic.id,
     subtopicId: subtopic?.id || effectiveSubtopicId,
     socialWorkBlueprintItemId: blueprintItem?.id || null,
     examTrack: trackName,
     officialExamDescription: text(trackRes.data.official_exam_description),
     officialSourceURL: text(trackRes.data.official_source_url),
     aswbExamLevel: text(trackRes.data.aswb_exam_level) || text(blueprintItem?.exam_level),
-    majorContentArea: text(blueprintItem?.major_content_area) || text(topicRes.data.title),
-    majorContentWeight: blueprintItem?.percentage_weight ?? topicRes.data.official_weight_percent ?? null,
+    majorContentArea: text(blueprintItem?.major_content_area) || text(topic.title),
+    majorContentWeight: blueprintItem?.percentage_weight ?? topic.official_weight_percent ?? null,
     competencySection: text(blueprintItem?.competency_section) || text(subtopic?.title),
     appliedKnowledgeStatement: text(blueprintItem?.applied_knowledge_statement) || text(subtopic?.learning_objective),
     learningObjective: text(blueprintItem?.applied_knowledge_statement) || text(subtopic?.learning_objective),
-    topicDescription: text(topicRes.data.description),
+    topicDescription: text(topic.description),
     subtopicDescription: text(subtopic?.description),
-    topicOfficialBlueprintText: text(topicRes.data.official_blueprint_text),
+    topicOfficialBlueprintText: text(topic.official_blueprint_text),
     subtopicOfficialBlueprintText: text(subtopic?.official_blueprint_text),
     officialBlueprintText: [
       text(blueprintItem?.official_blueprint_text),
       text(subtopic?.official_blueprint_text),
-      text(topicRes.data.official_blueprint_text),
+      text(topic.official_blueprint_text),
     ].filter(Boolean).join('\n\n'),
     difficultyTarget: mediumOrHard(input.difficultyTarget),
     cognitiveLevelTarget,

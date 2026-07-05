@@ -74,12 +74,23 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    const socialWorkBlueprintItems = blueprintItemsRes.data || [];
+    const topics = topicsRes.data || [];
+    const blueprintTopicIds = new Set(
+      socialWorkBlueprintItems
+        .map((item: any) => item.topic_id)
+        .filter(Boolean)
+    );
+    const visibleTopics = socialWorkBlueprintItems.length
+      ? topics.filter((topic: any) => blueprintTopicIds.has(topic.id) && String(topic.official_blueprint_text || '').trim())
+      : topics;
+
     return NextResponse.json({
       categories: categoriesRes.data || [],
       tracks: tracksRes.data || [],
-      topics: topicsRes.data || [],
+      topics: visibleTopics,
       subtopics: subtopicsRes.data || [],
-      socialWorkBlueprintItems: blueprintItemsRes.data || [],
+      socialWorkBlueprintItems,
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

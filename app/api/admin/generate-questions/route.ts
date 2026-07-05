@@ -191,13 +191,15 @@ export async function POST(req: NextRequest) {
     const effectiveLearningObjective = blueprintContext.learningObjective || selectedBlueprintItem?.applied_knowledge_statement || selectedSubtopic?.learning_objective || body.learningObjective;
     const blueprintReferenceText = blueprintContext.officialBlueprintText;
     const socialWorkExamLevel = asSocialWorkExamLevel(blueprintContext.aswbExamLevel || selectedBlueprintItem?.exam_level);
+    const canonicalTopicId = blueprintContext.topicId || body.topicId;
+    const canonicalTopicTitle = blueprintContext.majorContentArea || topicRes.data.title;
 
     const { data: batch, error: batchError } = await supabaseAdmin
       .from('ai_generation_batches')
       .insert({
         admin_user_id: adminUser.id,
         exam_track_id: body.examTrackId,
-        topic_id: body.topicId,
+        topic_id: canonicalTopicId,
         content_type: 'mcq',
         quantity_requested: body.quantity,
         status: 'running',
@@ -220,7 +222,7 @@ export async function POST(req: NextRequest) {
     const existingQuestions = await loadExistingQuestionFingerprints(
       supabaseAdmin,
       body.examTrackId,
-      body.topicId
+      canonicalTopicId
     );
     const seenHashes = new Set(existingQuestions.map((question) => question.duplicate_hash).filter(Boolean));
 
@@ -237,12 +239,12 @@ export async function POST(req: NextRequest) {
 
       const generated = await generateQuestions({
         examTrackId: body.examTrackId,
-        topicId: body.topicId,
+        topicId: canonicalTopicId,
         subtopicId: blueprintContext.subtopicId || null,
         examTrackName: examName,
         officialSourceUrl: trackRes.data.official_source_url,
         officialExamDescription: blueprintContext.officialExamDescription,
-        topicTitle: topicRes.data.title,
+        topicTitle: canonicalTopicTitle,
         topicDescription: blueprintContext.topicDescription,
         topicOfficialBlueprintText: blueprintContext.topicOfficialBlueprintText,
         topicWeightPercent: blueprintContext.majorContentWeight,
@@ -278,8 +280,8 @@ export async function POST(req: NextRequest) {
         let question = originalQuestion;
         const quality = validateQuestionQuality(question, {
           examTrackId: body.examTrackId,
-          topicId: body.topicId,
-          topicTitle: topicRes.data.title,
+          topicId: canonicalTopicId,
+          topicTitle: canonicalTopicTitle,
           subtopic: effectiveSubtopic,
           learningObjective: effectiveLearningObjective,
           existingQuestions,
@@ -305,11 +307,11 @@ export async function POST(req: NextRequest) {
           question,
           {
             examTrackId: body.examTrackId,
-            topicId: body.topicId,
+            topicId: canonicalTopicId,
             examTrackName: examName,
             officialSourceUrl: trackRes.data.official_source_url,
             officialExamDescription: blueprintContext.officialExamDescription,
-            topicTitle: topicRes.data.title,
+            topicTitle: canonicalTopicTitle,
             topicDescription: blueprintContext.topicDescription,
             topicOfficialBlueprintText: blueprintContext.topicOfficialBlueprintText,
             topicWeightPercent: blueprintContext.majorContentWeight,
@@ -347,11 +349,11 @@ export async function POST(req: NextRequest) {
             question,
             metadata: {
               examTrackId: body.examTrackId,
-              topicId: body.topicId,
+              topicId: canonicalTopicId,
               examTrackName: examName,
               officialSourceUrl: trackRes.data.official_source_url,
               officialExamDescription: blueprintContext.officialExamDescription,
-              topicTitle: topicRes.data.title,
+              topicTitle: canonicalTopicTitle,
               topicDescription: blueprintContext.topicDescription,
               topicOfficialBlueprintText: blueprintContext.topicOfficialBlueprintText,
               topicWeightPercent: blueprintContext.majorContentWeight,
@@ -386,7 +388,7 @@ export async function POST(req: NextRequest) {
 
         const row = {
           exam_track_id: body.examTrackId,
-          topic_id: body.topicId,
+          topic_id: canonicalTopicId,
           subtopic_id: blueprintContext.subtopicId || null,
           social_work_blueprint_item_id: blueprintContext.socialWorkBlueprintItemId || null,
           blueprint_content_area: blueprintContext.majorContentArea || null,
@@ -496,7 +498,7 @@ export async function POST(req: NextRequest) {
         admin_user_id: adminUser.id,
         exam_track_id: body.examTrackId,
         exam_name: examName,
-        topic_id: body.topicId,
+        topic_id: canonicalTopicId,
         content_type: 'mcq',
         requested_count: body.quantity,
         generated_count: quantityInserted,
