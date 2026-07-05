@@ -93,10 +93,12 @@ export default function ContentGenerationPage() {
     if (params.trackId) {
       setTopics(data.topics || []);
       setSocialWorkBlueprintItems(data.socialWorkBlueprintItems || []);
-      setSelectedTopic('');
-      setSubtopics([]);
-      setSelectedSubtopic('');
-      setSelectedBlueprintItem('');
+      if (!params.topicId) {
+        setSelectedTopic('');
+        setSubtopics([]);
+        setSelectedSubtopic('');
+        setSelectedBlueprintItem('');
+      }
     }
 
     if (params.topicId) {
