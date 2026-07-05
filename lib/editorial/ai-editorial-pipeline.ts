@@ -22,6 +22,15 @@ const scoreSchema: z.ZodType<number, z.ZodTypeDef, unknown> = z.preprocess(
   (value) => normalizeScore(value),
   z.number().int().min(0).max(100)
 );
+const flexibleStringSchema = z.preprocess((value) => {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}, z.string().optional());
 
 const reviewerSchema = z.object({
   score: scoreSchema.optional(),
@@ -35,7 +44,7 @@ const reviewerSchema = z.object({
   plagiarism_risk_score: scoreSchema.optional(),
   detected_cognitive_level: z.string().optional(),
   explanation: z.string().default(''),
-  similarity_notes: z.string().optional(),
+  similarity_notes: flexibleStringSchema,
   failure_reasons: z.array(z.string()).default([]),
   rewrite_recommendations: z.array(z.string()).default([]),
   bias_flags: z.array(z.string()).default([]),
