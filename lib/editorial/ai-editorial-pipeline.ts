@@ -18,16 +18,21 @@ export const EDITORIAL_MODELS = {
   committee: process.env.CONTENT_COMMITTEE_MODEL || 'gpt-5.5',
 };
 
+const scoreSchema: z.ZodType<number, z.ZodTypeDef, unknown> = z.preprocess(
+  (value) => normalizeScore(value),
+  z.number().int().min(0).max(100)
+);
+
 const reviewerSchema = z.object({
-  score: z.number().min(0).max(100).optional(),
-  blueprint_alignment_score: z.number().min(0).max(100).optional(),
-  difficulty_quality_score: z.number().min(0).max(100).optional(),
-  distractor_score: z.number().min(0).max(100).optional(),
-  rationale_score: z.number().min(0).max(100).optional(),
-  psychometric_score: z.number().min(0).max(100).optional(),
-  bias_score: z.number().min(0).max(100).optional(),
-  security_score: z.number().min(0).max(100).optional(),
-  plagiarism_risk_score: z.number().min(0).max(100).optional(),
+  score: scoreSchema.optional(),
+  blueprint_alignment_score: scoreSchema.optional(),
+  difficulty_quality_score: scoreSchema.optional(),
+  distractor_score: scoreSchema.optional(),
+  rationale_score: scoreSchema.optional(),
+  psychometric_score: scoreSchema.optional(),
+  bias_score: scoreSchema.optional(),
+  security_score: scoreSchema.optional(),
+  plagiarism_risk_score: scoreSchema.optional(),
   detected_cognitive_level: z.string().optional(),
   explanation: z.string().default(''),
   similarity_notes: z.string().optional(),
@@ -37,13 +42,13 @@ const reviewerSchema = z.object({
 });
 
 const finalReviewSchema = z.object({
-  final_blueprint_score: z.number().min(0).max(100),
-  final_difficulty_score: z.number().min(0).max(100),
-  final_distractor_score: z.number().min(0).max(100),
-  final_psychometric_score: z.number().min(0).max(100),
-  final_bias_score: z.number().min(0).max(100),
-  final_security_score: z.number().min(0).max(100),
-  final_integrity_score: z.number().min(0).max(100),
+  final_blueprint_score: scoreSchema,
+  final_difficulty_score: scoreSchema,
+  final_distractor_score: scoreSchema,
+  final_psychometric_score: scoreSchema,
+  final_bias_score: scoreSchema,
+  final_security_score: scoreSchema,
+  final_integrity_score: scoreSchema,
   final_status: z.enum(['passed', 'needs_improvement', 'needs_human_review', 'needs_metadata', 'rejected']),
   explanation: z.string().default(''),
   failure_reasons: z.array(z.string()).default([]),
@@ -53,7 +58,7 @@ const finalReviewSchema = z.object({
 const committeeReviewSchema = z.object({
   role: z.string(),
   vote: z.enum(['approve', 'revise', 'reject']),
-  score: z.number().int().min(0).max(100),
+  score: scoreSchema,
   reason: z.string(),
   required_changes: z.array(z.string()).default([]),
 });
@@ -129,6 +134,13 @@ function integrityScoreFromScores(scores: {
     + (scores.bias * 0.10)
     + (scores.security * 0.10)
   );
+}
+
+function normalizeScore(value: unknown) {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  const score = numeric > 0 && numeric <= 1 ? numeric * 100 : numeric;
+  return Math.max(0, Math.min(100, Math.round(score)));
 }
 
 async function fetchQuestion(supabaseAdmin: SupabaseClient, questionId: string) {
@@ -236,14 +248,15 @@ Return: security_score, plagiarism_risk_score, similarity_notes, failure_reasons
   ]);
 
   const scores = {
-    blueprint: blueprint.blueprint_alignment_score ?? blueprint.score ?? 0,
-    difficulty: difficulty.difficulty_quality_score ?? difficulty.score ?? 0,
-    distractor: distractor.distractor_score ?? distractor.score ?? 0,
-    rationale: distractor.rationale_score ?? distractor.score ?? 0,
-    psychometric: psychometric.psychometric_score ?? psychometric.score ?? 0,
-    bias: bias.bias_score ?? bias.score ?? 0,
-    security: security.security_score ?? security.score ?? 0,
+    blueprint: normalizeScore(blueprint.blueprint_alignment_score ?? blueprint.score ?? 0),
+    difficulty: normalizeScore(difficulty.difficulty_quality_score ?? difficulty.score ?? 0),
+    distractor: normalizeScore(distractor.distractor_score ?? distractor.score ?? 0),
+    rationale: normalizeScore(distractor.rationale_score ?? distractor.score ?? 0),
+    psychometric: normalizeScore(psychometric.psychometric_score ?? psychometric.score ?? 0),
+    bias: normalizeScore(bias.bias_score ?? bias.score ?? 0),
+    security: normalizeScore(security.security_score ?? security.score ?? 0),
   };
+  const plagiarismRiskScore = normalizeScore(security.plagiarism_risk_score ?? question.plagiarism_risk_score ?? 0);
   const integrityScore = integrityScoreFromScores(scores);
   const failureReasons = allFailureReasons({ blueprint, difficulty, distractor, psychometric, bias, security });
   const rewriteRecommendations = allRewriteRecommendations({ blueprint, difficulty, distractor, psychometric, bias, security });
@@ -269,7 +282,7 @@ Return: security_score, plagiarism_risk_score, similarity_notes, failure_reasons
       psychometric_score: scores.psychometric,
       bias_score: scores.bias,
       security_score: scores.security,
-      plagiarism_risk_score: security.plagiarism_risk_score ?? question.plagiarism_risk_score ?? 0,
+      plagiarism_risk_score: plagiarismRiskScore,
       bias_flags: bias.bias_flags || [],
       integrity_score: integrityScore,
       integrity_status: status,
@@ -400,38 +413,47 @@ ${JSON.stringify(questionForPrompt(question), null, 2)}
 Evaluate independently and output final_blueprint_score, final_difficulty_score, final_distractor_score, final_psychometric_score, final_bias_score, final_security_score, final_integrity_score, final_status, explanation, failure_reasons, rewrite_recommendations.`,
     finalReviewSchema
   );
+  const finalScores = {
+    blueprint: normalizeScore(finalReview.final_blueprint_score),
+    difficulty: normalizeScore(finalReview.final_difficulty_score),
+    distractor: normalizeScore(finalReview.final_distractor_score),
+    psychometric: normalizeScore(finalReview.final_psychometric_score),
+    bias: normalizeScore(finalReview.final_bias_score),
+    security: normalizeScore(finalReview.final_security_score),
+    integrity: normalizeScore(finalReview.final_integrity_score),
+  };
 
-  const passed = finalReview.final_blueprint_score >= 90
-    && finalReview.final_difficulty_score >= 85
-    && finalReview.final_distractor_score >= 85
-    && finalReview.final_psychometric_score >= 85
-    && finalReview.final_bias_score >= 90
-    && finalReview.final_security_score >= 90
-    && finalReview.final_integrity_score >= 90;
+  const passed = finalScores.blueprint >= 90
+    && finalScores.difficulty >= 85
+    && finalScores.distractor >= 85
+    && finalScores.psychometric >= 85
+    && finalScores.bias >= 90
+    && finalScores.security >= 90
+    && finalScores.integrity >= 90;
   const attempts = question.improvement_attempts || 0;
   const status = passed ? 'passed' : attempts >= 2 ? 'needs_human_review' : 'needs_improvement';
 
   const { data: updated, error } = await supabaseAdmin
     .from('questions')
     .update({
-      final_blueprint_score: finalReview.final_blueprint_score,
-      final_difficulty_score: finalReview.final_difficulty_score,
-      final_distractor_score: finalReview.final_distractor_score,
-      final_psychometric_score: finalReview.final_psychometric_score,
-      final_bias_score: finalReview.final_bias_score,
-      final_security_score: finalReview.final_security_score,
-      final_integrity_score: finalReview.final_integrity_score,
+      final_blueprint_score: finalScores.blueprint,
+      final_difficulty_score: finalScores.difficulty,
+      final_distractor_score: finalScores.distractor,
+      final_psychometric_score: finalScores.psychometric,
+      final_bias_score: finalScores.bias,
+      final_security_score: finalScores.security,
+      final_integrity_score: finalScores.integrity,
       final_review_status: finalReview.final_status,
       final_review_notes: finalReview.explanation,
       failure_reasons: finalReview.failure_reasons,
       rewrite_recommendations: finalReview.rewrite_recommendations,
       integrity_status: status,
-      integrity_score: finalReview.final_integrity_score,
-      blueprint_alignment_score: finalReview.final_blueprint_score,
-      difficulty_quality_score: finalReview.final_difficulty_score,
-      psychometric_score: finalReview.final_psychometric_score,
-      bias_score: finalReview.final_bias_score,
-      security_score: finalReview.final_security_score,
+      integrity_score: finalScores.integrity,
+      blueprint_alignment_score: finalScores.blueprint,
+      difficulty_quality_score: finalScores.difficulty,
+      psychometric_score: finalScores.psychometric,
+      bias_score: finalScores.bias,
+      security_score: finalScores.security,
     })
     .eq('id', questionId)
     .select('*')
@@ -484,13 +506,13 @@ Output exactly: role, vote approve|revise|reject, score, reason, required_change
       reviewer_role: review.role,
       model_used: EDITORIAL_MODELS.committee,
       vote: review.vote,
-      score: review.score,
+      score: normalizeScore(review.score),
       reason: review.reason,
       required_changes: review.required_changes,
     }))
   );
 
-  const averageScore = Math.round(reviews.reduce((sum, review) => sum + review.score, 0) / reviews.length);
+  const averageScore = Math.round(reviews.reduce((sum, review) => sum + normalizeScore(review.score), 0) / reviews.length);
   const approveCount = reviews.filter((review) => review.vote === 'approve').length;
   const rejectCount = reviews.filter((review) => review.vote === 'reject').length;
   const committeeStatus = rejectCount > 0
@@ -504,7 +526,7 @@ Output exactly: role, vote approve|revise|reject, score, reason, required_change
     .update({
       committee_status: committeeStatus,
       committee_average_score: averageScore,
-      committee_review_notes: reviews.map((review) => `${review.role}: ${review.vote} (${review.score}) - ${review.reason}`).join('\n'),
+      committee_review_notes: reviews.map((review) => `${review.role}: ${review.vote} (${normalizeScore(review.score)}) - ${review.reason}`).join('\n'),
       committee_approved_at: committeeStatus === 'approved' ? new Date().toISOString() : null,
       integrity_status: committeeStatus === 'rejected' ? 'rejected' : question.integrity_status,
       active: false,
