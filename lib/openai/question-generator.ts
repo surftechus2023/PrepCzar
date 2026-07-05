@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { formatExamTrackRulesForPrompt } from '@/lib/content-generation/exam-track-rules';
 import { getOpenAIClient } from './client';
+import { temperatureOption } from './request-options';
 
 export const QUESTION_GENERATOR_MODEL = process.env.CONTENT_GENERATION_MODEL || 'gpt-4.1-mini';
 export const QUESTION_PROMPT_VERSION = 'mcq-quality-v2-strict-integrity';
@@ -207,7 +208,7 @@ Return exactly this JSON shape:
 
   const completion = await openai.chat.completions.create({
     model: QUESTION_GENERATOR_MODEL,
-    temperature: 0.4,
+    ...temperatureOption(QUESTION_GENERATOR_MODEL, 0.4),
     messages: [
       {
         role: 'system',

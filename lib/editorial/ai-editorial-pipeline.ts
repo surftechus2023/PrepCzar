@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { buildBlueprintContext, formatBlueprintContextForPrompt, type BlueprintContext } from '@/lib/blueprint/blueprint-context-builder';
 import { checkAndUpdateQuestionIntegrity } from '@/lib/content-integrity/question-integrity-checker';
 import { getOpenAIClient } from '@/lib/openai/client';
+import { temperatureOption } from '@/lib/openai/request-options';
 import type { Question } from '@/types/database';
 
 export const EDITORIAL_MODELS = {
@@ -162,7 +163,7 @@ async function callJsonModel<T>(
   const openai = getOpenAIClient();
   const completion = await openai.chat.completions.create({
     model,
-    temperature: 0.15,
+    ...temperatureOption(model, 0.15),
     messages: [
       { role: 'system', content: system },
       { role: 'user', content: prompt },

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { formatExamTrackRulesForPrompt } from '@/lib/content-generation/exam-track-rules';
 import { evaluateQuestionIntegrity, type QuestionContext, type QuestionIntegrityResult } from '@/lib/content-integrity/question-integrity-checker';
 import { getOpenAIClient } from '@/lib/openai/client';
+import { temperatureOption } from '@/lib/openai/request-options';
 import { generatedQuestionSchema, type GeneratedQuestion } from '@/lib/openai/question-generator';
 import type { Question } from '@/types/database';
 
@@ -281,7 +282,7 @@ Return only one JSON object matching the generated question schema.`;
 
   const completion = await openai.chat.completions.create({
     model: CONTENT_IMPROVEMENT_MODEL,
-    temperature: 0.25,
+    ...temperatureOption(CONTENT_IMPROVEMENT_MODEL, 0.25),
     messages: [
       {
         role: 'system',
