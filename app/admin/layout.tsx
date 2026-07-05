@@ -14,6 +14,7 @@ const adminNav = [
   { icon: LayoutDashboard, label: 'Overview', href: '/admin' },
   { icon: BookOpen, label: 'Exams', href: '/admin/exams' },
   { icon: Sparkles, label: 'Generate Content', href: '/admin/generate' },
+  { icon: ShieldCheck, label: 'AI Question Generation', href: '/admin/content-generation' },
   { icon: HelpCircle, label: 'Questions', href: '/admin/questions' },
   { icon: ShieldCheck, label: 'Question Review', href: '/admin/review-questions' },
   { icon: Layers, label: 'Flashcards', href: '/admin/flashcards' },

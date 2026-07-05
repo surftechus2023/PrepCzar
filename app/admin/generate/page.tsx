@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Sparkles, Loader2, CheckCircle, AlertCircle, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,6 +19,15 @@ interface GenerationJob {
   count: number;
   status: 'idle' | 'running' | 'done' | 'error';
   result?: string;
+}
+
+function isSocialWorkTrack(track?: ExamTrack) {
+  if (!track) return false;
+  return /\b(bsw|msw|lmsw|lcsw|social work|clinical social)\b/i.test([
+    track.slug,
+    track.name,
+    track.full_name,
+  ].filter(Boolean).join(' '));
 }
 
 export default function AdminGeneratePage() {
@@ -82,6 +92,15 @@ export default function AdminGeneratePage() {
       return;
     }
 
+    if (contentType === 'mcq' && isSocialWorkTrack(selectedTrackObj)) {
+      toast({
+        title: 'Use blueprint-aware generation',
+        description: 'Social Work MCQs require a stored ASWB applied knowledge statement.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setJob({ type: contentType, examTrackId: selectedTrack, topicId: selectedTopic, count, status: 'running' });
 
     try {
@@ -113,6 +132,7 @@ export default function AdminGeneratePage() {
 
   const selectedTrackObj = tracks.find(t => t.id === selectedTrack);
   const selectedTopicObj = topics.find(t => t.id === selectedTopic);
+  const requiresBlueprintQuestionGenerator = contentType === 'mcq' && isSocialWorkTrack(selectedTrackObj);
 
   const contentTypes: { value: ContentType; label: string; desc: string }[] = [
     { value: 'mcq', label: 'MCQ Questions', desc: 'Multiple choice questions with rationales in 3 languages' },
@@ -229,7 +249,7 @@ export default function AdminGeneratePage() {
             <Button
               className="w-full"
               onClick={handleGenerate}
-              disabled={job?.status === 'running' || !selectedTrack || !selectedTopic}
+              disabled={job?.status === 'running' || !selectedTrack || !selectedTopic || requiresBlueprintQuestionGenerator}
             >
               {job?.status === 'running' ? (
                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Generating...</>
@@ -237,6 +257,18 @@ export default function AdminGeneratePage() {
                 <><Sparkles className="w-4 h-4 mr-2" />Generate {count} {contentType === 'mcq' ? 'Questions' : contentType === 'flashcards' ? 'Flashcards' : 'Vignettes'}</>
               )}
             </Button>
+            {requiresBlueprintQuestionGenerator && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-100">
+                <p className="font-medium">Social Work MCQs require blueprint-aware generation.</p>
+                <p className="mt-1">
+                  Use the AI Question Generation page so the generator receives the ASWB exam level, content area,
+                  competency, applied knowledge statement, subtopic blueprint text, and question-writing guideline.
+                </p>
+                <Button asChild size="sm" className="mt-3">
+                  <Link href="/admin/content-generation">Open AI Question Generation</Link>
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
 

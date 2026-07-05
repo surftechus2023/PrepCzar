@@ -62,9 +62,14 @@ export default function AdminOverviewPage() {
           <h1 className="text-3xl font-bold text-foreground">Admin Overview</h1>
           <p className="text-muted-foreground mt-1">Platform health and content statistics</p>
         </div>
-        <Button asChild>
-          <Link href="/admin/generate">Generate Content</Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button asChild variant="outline">
+            <Link href="/admin/generate">Generate Content</Link>
+          </Button>
+          <Button asChild>
+            <Link href="/admin/content-generation">AI Question Generation</Link>
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
@@ -98,6 +103,7 @@ export default function AdminOverviewPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             {[
+              { label: 'AI Question Generation', href: '/admin/content-generation', desc: 'Create blueprint-aware Social Work MCQs' },
               { label: 'Generate Content', href: '/admin/generate', desc: 'Create questions, flashcards and vignettes' },
               { label: 'Manage Questions', href: '/admin/questions', desc: 'Review, edit and publish questions' },
               { label: 'Integrity Review', href: '/admin/review-questions', desc: 'Validate, score, flag and publish generated MCQs' },
