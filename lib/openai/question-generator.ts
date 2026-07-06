@@ -83,6 +83,81 @@ function formatMix(mix: Record<string, number>) {
     .join(', ');
 }
 
+function textValue(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function normalizeCorrectOption(value: unknown): GeneratedQuestion['correct_option'] {
+  const option = String(value || '').trim().toUpperCase();
+  return option === 'B' || option === 'C' || option === 'D' ? option : 'A';
+}
+
+function normalizeCognitiveLevel(value: unknown): GeneratedQuestion['cognitive_level'] {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (
+    normalized === 'recall'
+    || normalized === 'comprehension'
+    || normalized === 'application'
+    || normalized === 'analysis'
+    || normalized === 'clinical judgment'
+    || normalized === 'ethics'
+    || normalized === 'safety'
+    || normalized === 'prioritization'
+  ) {
+    return normalized;
+  }
+  return 'application';
+}
+
+function normalizeGeneratedQuestion(raw: any, fallback: QuestionGenerationInput): GeneratedQuestion {
+  const correctOption = normalizeCorrectOption(raw?.correct_option ?? raw?.answer ?? raw?.correctAnswer);
+  const correctRationale = textValue(raw?.correct_rationale, raw?.rationale, raw?.rationale_en, raw?.explanation);
+  const optionA = textValue(raw?.option_a, raw?.option_a_en, raw?.options?.a, raw?.options?.A);
+  const optionB = textValue(raw?.option_b, raw?.option_b_en, raw?.options?.b, raw?.options?.B);
+  const optionC = textValue(raw?.option_c, raw?.option_c_en, raw?.options?.c, raw?.options?.C);
+  const optionD = textValue(raw?.option_d, raw?.option_d_en, raw?.options?.d, raw?.options?.D);
+  const rationales = raw?.option_rationales || raw?.rationales || {};
+
+  return {
+    question: textValue(raw?.question, raw?.question_en, raw?.stem),
+    option_a: optionA,
+    option_b: optionB,
+    option_c: optionC,
+    option_d: optionD,
+    correct_option: correctOption,
+    correct_rationale: correctRationale,
+    option_a_rationale: textValue(raw?.option_a_rationale, raw?.option_a_rationale_en, rationales.a, rationales.A, correctOption === 'A' ? correctRationale : `Option A is less appropriate because ${optionA} does not best address the scenario.`),
+    option_b_rationale: textValue(raw?.option_b_rationale, raw?.option_b_rationale_en, rationales.b, rationales.B, correctOption === 'B' ? correctRationale : `Option B is less appropriate because ${optionB} does not best address the scenario.`),
+    option_c_rationale: textValue(raw?.option_c_rationale, raw?.option_c_rationale_en, rationales.c, rationales.C, correctOption === 'C' ? correctRationale : `Option C is less appropriate because ${optionC} does not best address the scenario.`),
+    option_d_rationale: textValue(raw?.option_d_rationale, raw?.option_d_rationale_en, rationales.d, rationales.D, correctOption === 'D' ? correctRationale : `Option D is less appropriate because ${optionD} does not best address the scenario.`),
+    test_taking_tip: textValue(raw?.test_taking_tip, raw?.test_taking_tip_en, raw?.tip, 'Identify the best answer by matching the scenario to the stored blueprint objective and eliminating plausible but less direct options.'),
+    difficulty: raw?.difficulty === 'hard' ? 'hard' : 'medium',
+    cognitive_level: normalizeCognitiveLevel(raw?.cognitive_level ?? raw?.cognitiveLevel ?? fallback.intendedCognitiveLevel),
+    topic: textValue(raw?.topic, fallback.topicTitle),
+    subtopic: textValue(raw?.subtopic, fallback.subtopic),
+    learning_objective: textValue(raw?.learning_objective, raw?.learningObjective, fallback.learningObjective),
+    source_topic: textValue(raw?.source_topic, raw?.sourceTopic, raw?.topic, fallback.topicTitle),
+  };
+}
+
+function normalizeGeneratedResponse(parsedJson: unknown, fallback: QuestionGenerationInput) {
+  const raw = parsedJson as any;
+  const questions = Array.isArray(raw?.questions)
+    ? raw.questions
+    : Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.items)
+        ? raw.items
+        : [];
+
+  return {
+    questions: questions.map((question: any) => normalizeGeneratedQuestion(question, fallback)),
+  };
+}
+
 export async function generateQuestions(input: QuestionGenerationInput): Promise<GeneratedQuestion[]> {
   const parsedInput = questionGenerationInputSchema.parse(input);
   const openai = getOpenAIClient();
@@ -231,7 +306,7 @@ Return exactly this JSON shape:
     throw new Error('OpenAI returned invalid JSON.');
   }
 
-  const result = generatedQuestionResponseSchema.safeParse(parsedJson);
+  const result = generatedQuestionResponseSchema.safeParse(normalizeGeneratedResponse(parsedJson, parsedInput));
   if (!result.success) {
     throw new Error(`OpenAI response failed validation: ${result.error.message}`);
   }
