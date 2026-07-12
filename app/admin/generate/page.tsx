@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { authenticatedFetch } from '@/lib/api';
-import type { ExamCategory, ExamTrack, Subtopic, Topic } from '@/types/database';
+import type { ExamCategory, ExamTrack, SocialWorkBlueprintItem, Subtopic, Topic } from '@/types/database';
 
 type ContentType = 'mcq' | 'flashcards' | 'vignettes';
 type LanguageTarget = 'en' | 'es' | 'fr' | 'all';
@@ -48,11 +48,13 @@ export default function AdminGeneratePage() {
   const [tracks, setTracks] = useState<ExamTrack[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [subtopics, setSubtopics] = useState<Subtopic[]>([]);
+  const [socialWorkBlueprintItems, setSocialWorkBlueprintItems] = useState<SocialWorkBlueprintItem[]>([]);
   const [batchHistory, setBatchHistory] = useState<BatchHistoryItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedTrack, setSelectedTrack] = useState('');
   const [selectedTopic, setSelectedTopic] = useState('');
   const [selectedSubtopic, setSelectedSubtopic] = useState('');
+  const [selectedBlueprintItem, setSelectedBlueprintItem] = useState('');
   const [contentType, setContentType] = useState<ContentType>('mcq');
   const [count, setCount] = useState(5);
   const [intendedDifficulty, setIntendedDifficulty] = useState<'medium' | 'hard'>('medium');
@@ -105,28 +107,39 @@ export default function AdminGeneratePage() {
       setSelectedTrack('');
       setTopics([]);
       setSubtopics([]);
+      setSocialWorkBlueprintItems([]);
       setSelectedTopic('');
       setSelectedSubtopic('');
+      setSelectedBlueprintItem('');
     }
 
     if (params.trackId) {
       setTopics(data.topics || []);
+      setSocialWorkBlueprintItems(data.socialWorkBlueprintItems || []);
       if (!params.topicId) {
         setSubtopics([]);
         setSelectedTopic('');
         setSelectedSubtopic('');
+        setSelectedBlueprintItem('');
       }
     }
 
     if (params.topicId) {
       setSubtopics(data.subtopics || []);
+      setSocialWorkBlueprintItems(data.socialWorkBlueprintItems || []);
       setSelectedSubtopic('');
+      setSelectedBlueprintItem('');
     }
   }
 
   async function handleGenerate() {
     if (!selectedTrack || !selectedTopic || !selectedSubtopic) {
       toast({ title: 'Select category, track, topic, and blueprint objective first', variant: 'destructive' });
+      return;
+    }
+
+    if (socialWorkBlueprintItems.length > 0 && !selectedBlueprintItem) {
+      toast({ title: 'Select a Social Work applied knowledge statement first', variant: 'destructive' });
       return;
     }
 
@@ -140,6 +153,7 @@ export default function AdminGeneratePage() {
           examTrackId: selectedTrack,
           topicId: selectedTopic,
           subtopicId: selectedSubtopic,
+          socialWorkBlueprintItemId: selectedBlueprintItem || null,
           count,
           intendedDifficulty,
           intendedCognitiveLevel,
@@ -166,6 +180,11 @@ export default function AdminGeneratePage() {
   const selectedTrackObj = tracks.find((track) => track.id === selectedTrack);
   const selectedTopicObj = topics.find((topic) => topic.id === selectedTopic);
   const selectedSubtopicObj = subtopics.find((subtopic) => subtopic.id === selectedSubtopic);
+  const filteredBlueprintItems = socialWorkBlueprintItems.filter((item) => {
+    if (selectedTopic && item.topic_id && item.topic_id !== selectedTopic) return false;
+    if (selectedSubtopic && item.subtopic_id && item.subtopic_id !== selectedSubtopic) return false;
+    return true;
+  });
 
   const contentTypes: { value: ContentType; label: string; desc: string }[] = [
     { value: 'mcq', label: 'MCQ Questions', desc: 'Blueprint-grounded questions with rationales and integrity review' },
@@ -250,6 +269,36 @@ export default function AdminGeneratePage() {
               </div>
             )}
 
+            {socialWorkBlueprintItems.length > 0 && (
+              <div>
+                <label className="text-sm font-medium text-foreground mb-1 block">Social Work Applied Knowledge Statement</label>
+                <select
+                  value={selectedBlueprintItem}
+                  onChange={(event) => {
+                    const blueprintItemId = event.target.value;
+                    const selected = socialWorkBlueprintItems.find((item) => item.id === blueprintItemId);
+                    setSelectedBlueprintItem(blueprintItemId);
+                    if (selected?.subtopic_id) setSelectedSubtopic(selected.subtopic_id);
+                    if (selected?.topic_id) setSelectedTopic(selected.topic_id);
+                  }}
+                  disabled={!selectedTrack || filteredBlueprintItems.length === 0}
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
+                >
+                  <option value="">Select applied knowledge statement...</option>
+                  {filteredBlueprintItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.competency_section} — {item.applied_knowledge_statement}
+                    </option>
+                  ))}
+                </select>
+                {selectedBlueprintItem && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {socialWorkBlueprintItems.find((item) => item.id === selectedBlueprintItem)?.official_blueprint_text}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="grid md:grid-cols-4 gap-3">
               <div>
                 <label className="text-sm font-medium text-foreground mb-1 block">Quantity</label>
@@ -285,7 +334,11 @@ export default function AdminGeneratePage() {
               </div>
             </div>
 
-            <Button className="w-full" onClick={handleGenerate} disabled={job.status === 'running' || !selectedTrack || !selectedTopic || !selectedSubtopic}>
+            <Button
+              className="w-full"
+              onClick={handleGenerate}
+              disabled={job.status === 'running' || !selectedTrack || !selectedTopic || !selectedSubtopic || (socialWorkBlueprintItems.length > 0 && !selectedBlueprintItem)}
+            >
               {job.status === 'running' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
               Generate {count} {contentType === 'mcq' ? 'Questions' : contentType === 'flashcards' ? 'Flashcards' : 'Vignettes'}
             </Button>

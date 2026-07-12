@@ -75,6 +75,24 @@ function asSocialWorkExamLevel(value: string | null | undefined) {
   return value === 'bsw' || value === 'lmsw_msw' || value === 'lcsw_clinical' ? value : null;
 }
 
+async function resolveSocialWorkBlueprintItemId(
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
+  body: GenerateRequest
+) {
+  if (body.socialWorkBlueprintItemId) return body.socialWorkBlueprintItemId;
+
+  const { data, error } = await supabaseAdmin
+    .from('social_work_blueprint_items')
+    .select('id')
+    .eq('exam_track_id', body.examTrackId)
+    .eq('topic_id', body.topicId)
+    .eq('subtopic_id', body.subtopicId)
+    .limit(2);
+
+  if (error) return null;
+  return data?.length === 1 ? data[0].id : null;
+}
+
 async function loadExistingHashes(
   supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
   type: GenerateRequest['type'],
@@ -159,11 +177,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'OPENAI_API_KEY is not configured.' }, { status: 503 });
     }
 
+    const socialWorkBlueprintItemId = await resolveSocialWorkBlueprintItemId(supabaseAdmin, body);
+
     const blueprintContext = await loadRequiredBlueprintContext(supabaseAdmin, {
       examTrackId: body.examTrackId,
       topicId: body.topicId,
       subtopicId: body.subtopicId,
-      socialWorkBlueprintItemId: body.socialWorkBlueprintItemId || null,
+      socialWorkBlueprintItemId,
       intendedDifficulty: body.intendedDifficulty,
       intendedCognitiveLevel: body.intendedCognitiveLevel,
     });
