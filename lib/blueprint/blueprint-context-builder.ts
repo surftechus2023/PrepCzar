@@ -67,12 +67,12 @@ export async function buildBlueprintContext(
   const [trackRes, topicRes] = await Promise.all([
     supabaseAdmin
       .from('exam_tracks')
-      .select('id, name, full_name, slug, official_source_url, official_exam_description, aswb_exam_level')
+      .select('id, name, full_name, slug, official_source_url, official_exam_description, aswb_exam_level, exam_level')
       .eq('id', input.examTrackId)
       .single(),
     supabaseAdmin
       .from('topics')
-      .select('id, title, description, official_blueprint_text, official_weight_percent')
+      .select('id, title, description, official_blueprint_text, official_weight_percent, blueprint_domain_id')
       .eq('id', input.topicId)
       .eq('exam_track_id', input.examTrackId)
       .single(),
@@ -98,7 +98,7 @@ export async function buildBlueprintContext(
   if (blueprintItem?.topic_id && !text(topic.official_blueprint_text)) {
     const { data, error } = await supabaseAdmin
       .from('topics')
-      .select('id, title, description, official_blueprint_text, official_weight_percent')
+      .select('id, title, description, official_blueprint_text, official_weight_percent, blueprint_domain_id')
       .eq('id', blueprintItem.topic_id)
       .eq('exam_track_id', input.examTrackId)
       .maybeSingle();
@@ -112,12 +112,49 @@ export async function buildBlueprintContext(
   if (effectiveSubtopicId) {
     const { data, error } = await supabaseAdmin
       .from('subtopics')
-      .select('id, title, description, learning_objective, official_blueprint_text')
+      .select('id, title, description, learning_objective, official_blueprint_text, blueprint_competency_id, blueprint_objective_id')
       .eq('id', effectiveSubtopicId)
       .maybeSingle();
 
     if (error) throw new Error(error.message);
     subtopic = data;
+  }
+
+  let domain: any = null;
+  let competency: any = null;
+  let objective: any = null;
+
+  if (topic.blueprint_domain_id) {
+    const { data, error } = await supabaseAdmin
+      .from('blueprint_domains')
+      .select('id, code, title, description, official_blueprint_text, weight_percent, active, is_placeholder')
+      .eq('id', topic.blueprint_domain_id)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    domain = data;
+  }
+
+  if (subtopic?.blueprint_competency_id) {
+    const { data, error } = await supabaseAdmin
+      .from('blueprint_competencies')
+      .select('id, code, title, description, official_blueprint_text, active, is_placeholder')
+      .eq('id', subtopic.blueprint_competency_id)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    competency = data;
+  }
+
+  if (subtopic?.blueprint_objective_id) {
+    const { data, error } = await supabaseAdmin
+      .from('blueprint_objectives')
+      .select('id, code, title, description, official_blueprint_text, learning_objective, active, is_placeholder')
+      .eq('id', subtopic.blueprint_objective_id)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    objective = data;
   }
 
   const cognitiveLevelTarget = normalizeCognitiveLevel(input.cognitiveLevelTarget);
@@ -139,18 +176,21 @@ export async function buildBlueprintContext(
     examTrack: trackName,
     officialExamDescription: text(trackRes.data.official_exam_description),
     officialSourceURL: text(trackRes.data.official_source_url),
-    aswbExamLevel: text(trackRes.data.aswb_exam_level) || text(blueprintItem?.exam_level),
-    majorContentArea: text(blueprintItem?.major_content_area) || text(topic.title),
-    majorContentWeight: blueprintItem?.percentage_weight ?? topic.official_weight_percent ?? null,
-    competencySection: text(blueprintItem?.competency_section) || text(subtopic?.title),
-    appliedKnowledgeStatement: text(blueprintItem?.applied_knowledge_statement) || text(subtopic?.learning_objective),
-    learningObjective: text(blueprintItem?.applied_knowledge_statement) || text(subtopic?.learning_objective),
-    topicDescription: text(topic.description),
-    subtopicDescription: text(subtopic?.description),
-    topicOfficialBlueprintText: text(topic.official_blueprint_text),
-    subtopicOfficialBlueprintText: text(subtopic?.official_blueprint_text),
+    aswbExamLevel: text(trackRes.data.aswb_exam_level) || text(blueprintItem?.exam_level) || text(trackRes.data.exam_level),
+    majorContentArea: text(blueprintItem?.major_content_area) || text(domain?.title) || text(topic.title),
+    majorContentWeight: blueprintItem?.percentage_weight ?? domain?.weight_percent ?? topic.official_weight_percent ?? null,
+    competencySection: text(blueprintItem?.competency_section) || text(competency?.title) || text(subtopic?.title),
+    appliedKnowledgeStatement: text(blueprintItem?.applied_knowledge_statement) || text(objective?.title) || text(subtopic?.learning_objective),
+    learningObjective: text(blueprintItem?.applied_knowledge_statement) || text(objective?.learning_objective) || text(subtopic?.learning_objective),
+    topicDescription: text(domain?.description) || text(topic.description),
+    subtopicDescription: text(competency?.description) || text(subtopic?.description),
+    topicOfficialBlueprintText: text(domain?.official_blueprint_text) || text(topic.official_blueprint_text),
+    subtopicOfficialBlueprintText: text(objective?.official_blueprint_text) || text(competency?.official_blueprint_text) || text(subtopic?.official_blueprint_text),
     officialBlueprintText: [
       text(blueprintItem?.official_blueprint_text),
+      text(objective?.official_blueprint_text),
+      text(competency?.official_blueprint_text),
+      text(domain?.official_blueprint_text),
       text(subtopic?.official_blueprint_text),
       text(topic.official_blueprint_text),
     ].filter(Boolean).join('\n\n'),
@@ -186,6 +226,13 @@ export async function buildBlueprintContext(
   if (isSocialWorkTrack(`${trackName} ${trackRes.data.slug || ''}`) && !context.socialWorkBlueprintItemId) {
     context.missingMetadata.push('Social Work applied knowledge statement');
   }
+
+  if (domain?.is_placeholder) context.missingMetadata.push('official domain blueprint metadata');
+  if (competency?.is_placeholder) context.missingMetadata.push('official competency blueprint metadata');
+  if (objective?.is_placeholder) context.missingMetadata.push('official objective blueprint metadata');
+  if (domain && domain.active === false) context.missingMetadata.push('active blueprint domain');
+  if (competency && competency.active === false) context.missingMetadata.push('active blueprint competency');
+  if (objective && objective.active === false) context.missingMetadata.push('active blueprint objective');
 
   return context;
 }

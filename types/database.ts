@@ -73,9 +73,11 @@ export interface Database {
           official_source_url: string | null;
           official_exam_description: string | null;
           aswb_exam_level: string | null;
+          exam_level: string | null;
           active: boolean;
           display_order: number;
           created_at: string;
+          updated_at: string | null;
         };
         Insert: {
           id?: string;
@@ -88,8 +90,10 @@ export interface Database {
           official_source_url?: string | null;
           official_exam_description?: string | null;
           aswb_exam_level?: string | null;
+          exam_level?: string | null;
           active?: boolean;
           display_order?: number;
+          updated_at?: string | null;
         };
         Update: {
           id?: string;
@@ -102,8 +106,136 @@ export interface Database {
           official_source_url?: string | null;
           official_exam_description?: string | null;
           aswb_exam_level?: string | null;
+          exam_level?: string | null;
           active?: boolean;
           display_order?: number;
+          updated_at?: string | null;
+        };
+      };
+      blueprint_domains: {
+        Row: {
+          id: string;
+          exam_track_id: string;
+          code: string;
+          title: string;
+          description: string;
+          official_blueprint_text: string;
+          weight_percent: number | null;
+          display_order: number;
+          active: boolean;
+          is_placeholder: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          exam_track_id: string;
+          code: string;
+          title: string;
+          description?: string;
+          official_blueprint_text?: string;
+          weight_percent?: number | null;
+          display_order?: number;
+          active?: boolean;
+          is_placeholder?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          exam_track_id?: string;
+          code?: string;
+          title?: string;
+          description?: string;
+          official_blueprint_text?: string;
+          weight_percent?: number | null;
+          display_order?: number;
+          active?: boolean;
+          is_placeholder?: boolean;
+          updated_at?: string;
+        };
+      };
+      blueprint_competencies: {
+        Row: {
+          id: string;
+          domain_id: string;
+          code: string;
+          title: string;
+          description: string;
+          official_blueprint_text: string;
+          display_order: number;
+          active: boolean;
+          is_placeholder: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          domain_id: string;
+          code: string;
+          title: string;
+          description?: string;
+          official_blueprint_text?: string;
+          display_order?: number;
+          active?: boolean;
+          is_placeholder?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          domain_id?: string;
+          code?: string;
+          title?: string;
+          description?: string;
+          official_blueprint_text?: string;
+          display_order?: number;
+          active?: boolean;
+          is_placeholder?: boolean;
+          updated_at?: string;
+        };
+      };
+      blueprint_objectives: {
+        Row: {
+          id: string;
+          competency_id: string;
+          code: string;
+          title: string;
+          description: string;
+          official_blueprint_text: string;
+          learning_objective: string;
+          display_order: number;
+          active: boolean;
+          is_placeholder: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          competency_id: string;
+          code: string;
+          title: string;
+          description?: string;
+          official_blueprint_text?: string;
+          learning_objective?: string;
+          display_order?: number;
+          active?: boolean;
+          is_placeholder?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          competency_id?: string;
+          code?: string;
+          title?: string;
+          description?: string;
+          official_blueprint_text?: string;
+          learning_objective?: string;
+          display_order?: number;
+          active?: boolean;
+          is_placeholder?: boolean;
+          updated_at?: string;
         };
       };
       question_blueprint_guidelines: {
@@ -173,6 +305,7 @@ export interface Database {
           title: string;
           description: string;
           official_blueprint_text: string | null;
+          blueprint_domain_id: string | null;
           display_order: number;
           official_weight_percent: number | null;
           created_at: string;
@@ -184,6 +317,7 @@ export interface Database {
           title: string;
           description?: string;
           official_blueprint_text?: string | null;
+          blueprint_domain_id?: string | null;
           display_order?: number;
           official_weight_percent?: number | null;
         };
@@ -194,6 +328,7 @@ export interface Database {
           title?: string;
           description?: string;
           official_blueprint_text?: string | null;
+          blueprint_domain_id?: string | null;
           display_order?: number;
           official_weight_percent?: number | null;
         };
@@ -206,6 +341,8 @@ export interface Database {
           description: string;
           learning_objective: string;
           official_blueprint_text: string;
+          blueprint_competency_id: string | null;
+          blueprint_objective_id: string | null;
           display_order: number;
           created_at: string;
         };
@@ -216,6 +353,8 @@ export interface Database {
           description?: string;
           learning_objective?: string;
           official_blueprint_text?: string;
+          blueprint_competency_id?: string | null;
+          blueprint_objective_id?: string | null;
           display_order?: number;
         };
         Update: {
@@ -225,6 +364,8 @@ export interface Database {
           description?: string;
           learning_objective?: string;
           official_blueprint_text?: string;
+          blueprint_competency_id?: string | null;
+          blueprint_objective_id?: string | null;
           display_order?: number;
         };
       };
@@ -1006,6 +1147,9 @@ export interface Database {
 export type User = Database['public']['Tables']['users']['Row'];
 export type ExamCategory = Database['public']['Tables']['exam_categories']['Row'];
 export type ExamTrack = Database['public']['Tables']['exam_tracks']['Row'];
+export type BlueprintDomain = Database['public']['Tables']['blueprint_domains']['Row'];
+export type BlueprintCompetency = Database['public']['Tables']['blueprint_competencies']['Row'];
+export type BlueprintObjective = Database['public']['Tables']['blueprint_objectives']['Row'];
 export type QuestionBlueprintGuideline = Database['public']['Tables']['question_blueprint_guidelines']['Row'];
 export type Exam = Database['public']['Tables']['exams']['Row'];
 export type Topic = Database['public']['Tables']['topics']['Row'];

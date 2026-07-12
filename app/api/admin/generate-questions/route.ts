@@ -180,9 +180,11 @@ export async function POST(req: NextRequest) {
       cognitiveLevelTarget: body.intendedCognitiveLevel || 'application',
     });
 
-    if (socialWorkTrack && blueprintContext.missingMetadata.length) {
+    if (blueprintContext.missingMetadata.length) {
       return NextResponse.json(
-        { error: `Missing Social Work blueprint metadata: ${blueprintContext.missingMetadata.join(', ')}` },
+        {
+          error: `The selected blueprint objective is incomplete. Add official blueprint text and a learning objective before generating content. Missing: ${blueprintContext.missingMetadata.join(', ')}`,
+        },
         { status: 400 }
       );
     }

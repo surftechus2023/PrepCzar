@@ -6,13 +6,14 @@ import { Loader2, LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
-import { BarChart3, BookOpen, Users, LayoutDashboard, HelpCircle, Layers, MessageSquare, ShieldCheck, Sparkles } from 'lucide-react';
+import { BarChart3, BookOpen, Users, LayoutDashboard, HelpCircle, Layers, MessageSquare, ShieldCheck, Sparkles, ClipboardList } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
 const adminNav = [
   { icon: LayoutDashboard, label: 'Overview', href: '/admin' },
   { icon: BookOpen, label: 'Exams', href: '/admin/exams' },
+  { icon: ClipboardList, label: 'Blueprints', href: '/admin/blueprints' },
   { icon: Sparkles, label: 'Generate Content', href: '/admin/generate' },
   { icon: ShieldCheck, label: 'AI Question Generation', href: '/admin/content-generation' },
   { icon: HelpCircle, label: 'Questions', href: '/admin/questions' },
