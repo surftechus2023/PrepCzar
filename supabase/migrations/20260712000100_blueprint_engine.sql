@@ -192,17 +192,25 @@ ON CONFLICT (exam_track_id, title) DO UPDATE SET
 
 WITH social_work_competencies AS (
   SELECT
-    domains.id AS domain_id,
-    regexp_replace(split_part(items.competency_section, ' ', 1), '[^A-Z0-9]', '', 'g') AS code,
-    items.competency_section AS title,
-    items.competency_section || ' official ASWB competency section.' AS description,
-    string_agg(DISTINCT items.official_blueprint_text, E'\n' ORDER BY items.official_blueprint_text) AS official_blueprint_text,
-    MIN(items.display_order) AS display_order
-  FROM social_work_blueprint_items items
-  JOIN blueprint_domains domains
-    ON domains.exam_track_id = items.exam_track_id
-   AND domains.title = items.major_content_area
-  GROUP BY domains.id, items.competency_section
+    source.domain_id,
+    'C' || lpad(row_number() OVER (PARTITION BY source.domain_id ORDER BY source.display_order, source.title)::text, 2, '0') AS code,
+    source.title,
+    source.description,
+    source.official_blueprint_text,
+    source.display_order
+  FROM (
+    SELECT
+      domains.id AS domain_id,
+      items.competency_section AS title,
+      items.competency_section || ' official ASWB competency section.' AS description,
+      string_agg(DISTINCT items.official_blueprint_text, E'\n' ORDER BY items.official_blueprint_text) AS official_blueprint_text,
+      MIN(items.display_order) AS display_order
+    FROM social_work_blueprint_items items
+    JOIN blueprint_domains domains
+      ON domains.exam_track_id = items.exam_track_id
+     AND domains.title = items.major_content_area
+    GROUP BY domains.id, items.competency_section
+  ) source
 )
 INSERT INTO blueprint_competencies (
   domain_id,
@@ -234,20 +242,30 @@ ON CONFLICT (domain_id, title) DO UPDATE SET
 
 WITH social_work_objectives AS (
   SELECT
-    competencies.id AS competency_id,
-    'O' || lpad(items.display_order::text, 3, '0') AS code,
-    items.applied_knowledge_statement AS title,
-    items.applied_knowledge_statement AS description,
-    items.official_blueprint_text,
-    items.applied_knowledge_statement AS learning_objective,
-    items.display_order
-  FROM social_work_blueprint_items items
-  JOIN blueprint_domains domains
-    ON domains.exam_track_id = items.exam_track_id
-   AND domains.title = items.major_content_area
-  JOIN blueprint_competencies competencies
-    ON competencies.domain_id = domains.id
-   AND competencies.title = items.competency_section
+    source.competency_id,
+    'O' || lpad(row_number() OVER (PARTITION BY source.competency_id ORDER BY source.display_order, source.title)::text, 3, '0') AS code,
+    source.title,
+    source.description,
+    source.official_blueprint_text,
+    source.learning_objective,
+    source.display_order
+  FROM (
+    SELECT
+      competencies.id AS competency_id,
+      items.applied_knowledge_statement AS title,
+      items.applied_knowledge_statement AS description,
+      string_agg(DISTINCT items.official_blueprint_text, E'\n' ORDER BY items.official_blueprint_text) AS official_blueprint_text,
+      items.applied_knowledge_statement AS learning_objective,
+      MIN(items.display_order) AS display_order
+    FROM social_work_blueprint_items items
+    JOIN blueprint_domains domains
+      ON domains.exam_track_id = items.exam_track_id
+     AND domains.title = items.major_content_area
+    JOIN blueprint_competencies competencies
+      ON competencies.domain_id = domains.id
+     AND competencies.title = items.competency_section
+    GROUP BY competencies.id, items.applied_knowledge_statement
+  ) source
 )
 INSERT INTO blueprint_objectives (
   competency_id,
@@ -282,18 +300,34 @@ ON CONFLICT (competency_id, title) DO UPDATE SET
 
 WITH generic_domains AS (
   SELECT
-    topics.exam_track_id,
-    'D' || lpad(COALESCE(NULLIF(topics.display_order, 0), row_number() OVER (PARTITION BY topics.exam_track_id ORDER BY topics.display_order, topics.title))::text, 2, '0') AS code,
-    topics.title,
-    topics.description,
-    COALESCE(NULLIF(topics.official_blueprint_text, ''), topics.title || ': ' || COALESCE(NULLIF(topics.description, ''), 'Blueprint metadata requires official source verification.')) AS official_blueprint_text,
-    topics.official_weight_percent AS weight_percent,
-    topics.display_order,
-    (NULLIF(topics.official_blueprint_text, '') IS NULL) AS is_placeholder
-  FROM topics
-  JOIN exam_tracks ON exam_tracks.id = topics.exam_track_id
-  WHERE exam_tracks.slug NOT IN ('bsw', 'msw-lmsw', 'lcsw')
-    AND topics.exam_track_id IS NOT NULL
+    topic_source.exam_track_id,
+    'D' || lpad(row_number() OVER (PARTITION BY topic_source.exam_track_id ORDER BY topic_source.display_order, topic_source.title)::text, 2, '0') AS code,
+    topic_source.title,
+    topic_source.description,
+    COALESCE(NULLIF(topic_source.official_blueprint_text, ''), topic_source.title || ': ' || COALESCE(NULLIF(topic_source.description, ''), 'Blueprint metadata requires official source verification.')) AS official_blueprint_text,
+    topic_source.weight_percent,
+    topic_source.display_order,
+    (NULLIF(topic_source.official_blueprint_text, '') IS NULL) AS is_placeholder
+  FROM (
+    SELECT
+      topics.exam_track_id,
+      topics.title,
+      COALESCE(
+        NULLIF(max(NULLIF(topics.description, '')), ''),
+        ''
+      ) AS description,
+      COALESCE(
+        NULLIF(string_agg(DISTINCT NULLIF(topics.official_blueprint_text, ''), E'\n' ORDER BY NULLIF(topics.official_blueprint_text, '')), ''),
+        ''
+      ) AS official_blueprint_text,
+      max(topics.official_weight_percent) AS weight_percent,
+      min(topics.display_order) AS display_order
+    FROM topics
+    JOIN exam_tracks ON exam_tracks.id = topics.exam_track_id
+    WHERE exam_tracks.slug NOT IN ('bsw', 'msw-lmsw', 'lcsw')
+      AND topics.exam_track_id IS NOT NULL
+    GROUP BY topics.exam_track_id, topics.title
+  ) topic_source
 )
 INSERT INTO blueprint_domains (
   exam_track_id,

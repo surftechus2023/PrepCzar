@@ -1,63 +1,148 @@
 # AI Content Generation
 
-PrepCzar generates AI exam-prep content through admin-only workflows. The model is used to create draft content once, the drafts are stored in Supabase as inactive and unreviewed, and students practice only against approved database content.
+PrepCzar generates content once in the admin area, stores it in Supabase, and serves only stored, reviewed, active content to students. Student practice routes do not call OpenAI.
 
-## How It Works
+## Supported Content
 
-1. An admin opens `/admin/content-generation`.
-2. The admin selects an exam category, exam track, topic, subtopic, learning objective, quantity, difficulty mix, and cognitive level mix.
-3. `/api/admin/generate-questions` creates an `ai_generation_batches` row and calls OpenAI in chunks of up to 25 questions.
-4. Each generated question is parsed with Zod, scored by `lib/content-quality/question-quality.ts`, and inserted only when its score is at least 80.
-5. Inserted AI questions are saved with `reviewed = false`, `active = false`, and `generated_by_ai = true`.
-6. An admin reviews the queue at `/admin/review-questions`, edits if needed, then approves or publishes.
+- MCQs
+- Flashcards
+- Case vignettes
 
-## Admin-Only AI
+## Supported Tracks
 
-AI generation is intentionally admin-only. Student practice should be fast, predictable, auditable, and limited to content that has been reviewed for accuracy and exam-track fit. Normal student practice never calls OpenAI.
+- EPPP
+- BSW
+- LMSW/MSW
+- LCSW/Clinical
+- NCE
+- CCM
+- NCLEX-RN
+- NCLEX-PN
 
-## Quality Scoring
+## Required Admin Inputs
 
-Generated questions start at 100 points. The quality gate subtracts points for problems such as short question text, missing answer options, duplicate options, invalid correct answers, missing rationales, poor topic match, missing difficulty, missing cognitive level, likely duplicate hashes, or high similarity to existing questions.
+Use `Admin > Generate Content` and select:
 
-Only questions with `quality_score >= 80` are inserted. Rejected items are counted in the generation batch summary.
+- exam category
+- exam track
+- blueprint domain/topic
+- competency section / applied knowledge objective
+- content type
+- quantity
+- intended difficulty
+- intended cognitive level
+- generation language
 
-## Duplicate Prevention
+The API loads the complete selected blueprint context from Supabase before calling OpenAI.
 
-Each generated question receives a `duplicate_hash` from normalized question text plus `exam_track_id`. The hash is checked against existing database rows and against earlier accepted questions in the same batch. The quality gate also compares significant question tokens to reject items that are too similar to existing questions.
+## Blueprint Grounding
 
-## Admin Review
+Generation includes:
 
-The review page shows AI-generated questions with `reviewed = false`. Admins can inspect the question, options, correct answer, rationales, test-taking tip, subtopic, learning objective, quality score, and review notes.
+- exam-track name
+- exam level
+- official exam description
+- domain and weight
+- competency
+- applied knowledge statement
+- topic and subtopic descriptions
+- learning objective
+- official blueprint text
+- exam-specific writing rules
+- intended cognitive level
+- intended difficulty
 
-Actions:
+If required metadata is missing, generation stops with:
 
-- Approve sets `reviewed = true`.
-- Publish sets `reviewed = true` and `active = true`.
-- Edit updates question text, options, rationales, topic metadata, and answer key.
-- Reject keeps the question inactive and appends an admin rejection note.
+`The selected blueprint objective is incomplete. Add official blueprint text and a learning objective before generating content.`
 
-## Student Retrieval
+## Difficulty Policy
 
-Student practice retrieves questions from Supabase with:
+Generated content is medium or hard only.
 
-- matching `exam_track_id`
-- `reviewed = true`
-- `active = true`
+- Medium requires application.
+- Hard requires reasoning, prioritization, clinical judgment, ethical analysis, risk assessment, differential diagnosis, or complex decision-making when appropriate.
 
-RLS also enforces active subscribed exam-track access, so unreviewed AI content is not visible through normal student queries.
+Easy generated items are not allowed.
 
-## Recommended MVP Targets
+## Workflow
 
-- 100 MCQs per exam track
-- 50 flashcards per exam track
-- 20 case vignettes per exam track
+1. Create an `ai_generation_batches` row.
+2. Fetch complete blueprint metadata.
+3. Generate content in chunks of up to 25.
+4. Validate the model response with Zod.
+5. Run deterministic prechecks.
+6. Create duplicate hashes.
+7. Insert accepted items as `reviewed = false` and `active = false`.
+8. Insert MCQs with `integrity_status = pending`.
+9. Log rejected items and reasons.
+10. Update batch counts and status.
 
-## Local Verification
+## MCQs
 
-Run:
+Stored MCQs include:
 
-```bash
-npx tsx scripts/verify-question-generation.ts
-```
+- question stem
+- four stored answer options
+- one correct option
+- correct-answer rationale
+- rationale for each distractor
+- test-taking guidance
+- applied knowledge statement
+- cognitive level
+- intended difficulty
+- blueprint reference
+- source metadata
+- language fields where present
 
-The script verifies that batch tracking exists, required question fields exist, duplicate hashes are present, active questions are reviewed, unreviewed questions are not student-visible, and a sample generation request validates.
+MCQs are also passed through the integrity checker after insertion.
+
+## Flashcards
+
+Stored flashcards include:
+
+- concise front
+- complete back
+- blueprint reference
+- topic/subtopic metadata
+- learning objective
+- difficulty
+- cognitive level
+- language fields
+
+## Case Vignettes
+
+Stored vignettes include:
+
+- scenario
+- prompt
+- expected answer elements
+- scoring rubric
+- ideal response
+- coaching feedback
+- blueprint reference
+- topic/subtopic metadata
+- difficulty
+- cognitive level
+- language fields
+
+## Test Batch: Five MCQs
+
+1. Go to `Admin > Generate Content`.
+2. Select the exam category.
+3. Select the exam track.
+4. Select a blueprint domain/topic.
+5. Select a competency/applied knowledge objective.
+6. Set `Content Type` to `MCQ Questions`.
+7. Set `Quantity` to `5`.
+8. Set `Difficulty` to `Medium` or `Hard`.
+9. Set `Cognitive Level` to `Application` or `Reasoning`.
+10. Click `Generate`.
+
+The five questions are saved as inactive drafts:
+
+- `reviewed = false`
+- `active = false`
+- `integrity_status = pending`
+
+They will not appear in student practice until an admin reviews and publishes them.
