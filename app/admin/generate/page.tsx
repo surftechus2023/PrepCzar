@@ -180,11 +180,21 @@ export default function AdminGeneratePage() {
   const selectedTrackObj = tracks.find((track) => track.id === selectedTrack);
   const selectedTopicObj = topics.find((topic) => topic.id === selectedTopic);
   const selectedSubtopicObj = subtopics.find((subtopic) => subtopic.id === selectedSubtopic);
-  const filteredBlueprintItems = socialWorkBlueprintItems.filter((item) => {
+  const exactBlueprintItems = socialWorkBlueprintItems.filter((item) => {
     if (selectedTopic && item.topic_id && item.topic_id !== selectedTopic) return false;
     if (selectedSubtopic && item.subtopic_id && item.subtopic_id !== selectedSubtopic) return false;
     return true;
   });
+  const topicBlueprintItems = socialWorkBlueprintItems.filter((item) => {
+    if (!selectedTopic) return true;
+    return !item.topic_id || item.topic_id === selectedTopic;
+  });
+  const selectableBlueprintItems = exactBlueprintItems.length
+    ? exactBlueprintItems
+    : topicBlueprintItems.length
+      ? topicBlueprintItems
+      : socialWorkBlueprintItems;
+  const usingBlueprintFallback = socialWorkBlueprintItems.length > 0 && exactBlueprintItems.length === 0;
 
   const contentTypes: { value: ContentType; label: string; desc: string }[] = [
     { value: 'mcq', label: 'MCQ Questions', desc: 'Blueprint-grounded questions with rationales and integrity review' },
@@ -276,21 +286,23 @@ export default function AdminGeneratePage() {
                   value={selectedBlueprintItem}
                   onChange={(event) => {
                     const blueprintItemId = event.target.value;
-                    const selected = socialWorkBlueprintItems.find((item) => item.id === blueprintItemId);
                     setSelectedBlueprintItem(blueprintItemId);
-                    if (selected?.subtopic_id) setSelectedSubtopic(selected.subtopic_id);
-                    if (selected?.topic_id) setSelectedTopic(selected.topic_id);
                   }}
-                  disabled={!selectedTrack || filteredBlueprintItems.length === 0}
+                  disabled={!selectedTrack || selectableBlueprintItems.length === 0}
                   className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
                 >
                   <option value="">Select applied knowledge statement...</option>
-                  {filteredBlueprintItems.map((item) => (
+                  {selectableBlueprintItems.map((item) => (
                     <option key={item.id} value={item.id}>
-                      {item.competency_section} — {item.applied_knowledge_statement}
+                      {item.major_content_area} — {item.competency_section} — {item.applied_knowledge_statement}
                     </option>
                   ))}
                 </select>
+                {usingBlueprintFallback && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    No exact applied statement is linked to this topic/objective yet. Showing available Social Work blueprint statements for this track.
+                  </p>
+                )}
                 {selectedBlueprintItem && (
                   <p className="text-xs text-muted-foreground mt-1">
                     {socialWorkBlueprintItems.find((item) => item.id === selectedBlueprintItem)?.official_blueprint_text}
