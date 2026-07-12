@@ -9,7 +9,7 @@ function isLocalUrl(url: string) {
 }
 
 export function getSiteUrl() {
-  const configuredUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  const configuredUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL;
 
   if (configuredUrl && (process.env.NODE_ENV !== 'production' || !isLocalUrl(configuredUrl))) {
     return normalizeUrl(configuredUrl);

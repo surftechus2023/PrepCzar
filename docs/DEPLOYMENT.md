@@ -4,7 +4,7 @@ Recommended target: Vercel.
 
 1. Import the repository in Vercel.
 2. Set production environment variables from `.env.example`.
-3. Set `NEXT_PUBLIC_SITE_URL` to the production origin.
+3. Set `NEXT_PUBLIC_APP_URL` to the production origin. Keep `NEXT_PUBLIC_SITE_URL` as the same value while legacy references remain supported.
 4. Configure Stripe webhook URL: `https://your-domain.com/api/stripe/webhook`.
 5. Push Supabase migrations.
 6. Run a production build.

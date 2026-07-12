@@ -1,5 +1,12 @@
 import { supabase } from './supabase';
 
+function getPublicSiteUrl() {
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '');
+  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, '');
+  if (typeof window !== 'undefined') return window.location.origin;
+  return 'http://localhost:3000';
+}
+
 export async function signUp(email: string, password: string, fullName: string, emailRedirectTo?: string) {
   const { data, error } = await supabase.auth.signUp({
     email,
@@ -36,7 +43,7 @@ export async function signOut() {
 
 export async function resetPassword(email: string) {
   const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password`,
+    redirectTo: `${getPublicSiteUrl()}/auth/reset-password`,
   });
   return { data, error };
 }
