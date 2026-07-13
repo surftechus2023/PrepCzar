@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { SUBSCRIPTION_ACCESS_STATUSES } from '@/lib/stripe';
 
 export async function userHasActiveExamTrackAccess(
   supabaseAdmin: SupabaseClient,
@@ -21,7 +22,7 @@ export async function userHasActiveExamTrackAccess(
     .select('id, status, expires_at')
     .eq('user_id', userId)
     .eq('exam_track_id', examTrackId)
-    .in('status', ['active', 'trialing']);
+    .in('status', [...SUBSCRIPTION_ACCESS_STATUSES]);
 
   if (subscriptionError) throw new Error(subscriptionError.message);
   const now = Date.now();

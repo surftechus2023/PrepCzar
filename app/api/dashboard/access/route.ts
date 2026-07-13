@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser, getSupabaseAdmin } from '@/lib/server-auth';
+import { SUBSCRIPTION_ACCESS_STATUSES } from '@/lib/stripe';
 
 export async function GET(req: NextRequest) {
   try {
@@ -25,7 +26,7 @@ export async function GET(req: NextRequest) {
         .from('subscriptions')
         .select('id,user_id,exam_track_id,status,expires_at')
         .eq('user_id', authUser.id)
-        .in('status', ['active', 'trialing'])
+        .in('status', [...SUBSCRIPTION_ACCESS_STATUSES])
         .not('exam_track_id', 'is', null);
 
       if (subscriptionsError) {

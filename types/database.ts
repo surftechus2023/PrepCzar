@@ -1025,7 +1025,7 @@ export interface Database {
           exam_track_id: string | null;
           stripe_subscription_id: string | null;
           stripe_customer_id: string | null;
-          status: 'active' | 'inactive' | 'canceled' | 'past_due' | 'trialing';
+          status: 'active' | 'inactive' | 'canceled' | 'past_due' | 'trialing' | 'unpaid' | 'incomplete' | 'incomplete_expired';
           started_at: string;
           expires_at: string | null;
           created_at: string;
@@ -1037,7 +1037,7 @@ export interface Database {
           exam_track_id?: string | null;
           stripe_subscription_id?: string | null;
           stripe_customer_id?: string | null;
-          status?: 'active' | 'inactive' | 'canceled' | 'past_due' | 'trialing';
+          status?: 'active' | 'inactive' | 'canceled' | 'past_due' | 'trialing' | 'unpaid' | 'incomplete' | 'incomplete_expired';
           started_at?: string;
           expires_at?: string | null;
         };
@@ -1048,7 +1048,7 @@ export interface Database {
           exam_track_id?: string | null;
           stripe_subscription_id?: string | null;
           stripe_customer_id?: string | null;
-          status?: 'active' | 'inactive' | 'canceled' | 'past_due' | 'trialing';
+          status?: 'active' | 'inactive' | 'canceled' | 'past_due' | 'trialing' | 'unpaid' | 'incomplete' | 'incomplete_expired';
           started_at?: string;
           expires_at?: string | null;
         };

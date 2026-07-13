@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { z } from 'zod';
 import { getSupabaseAdmin } from '@/lib/server-auth';
 import { getSiteUrl } from '@/lib/site-url';
+import { EXPECTED_MONTHLY_PRICES, SUBSCRIPTION_ACCESS_STATUSES, getStripePriceIdForTrackSlug } from '@/lib/stripe';
 
 const signupCheckoutSchema = z.object({
   email: z.string().trim().email().transform((value) => value.toLowerCase()),
@@ -118,31 +119,68 @@ export async function POST(req: NextRequest) {
 
     const siteUrl = getSiteUrl();
     const trackName = track.full_name || track.name;
+    const priceId = getStripePriceIdForTrackSlug(track.slug);
+    const expectedPrice = EXPECTED_MONTHLY_PRICES[track.slug];
+
+    if (!priceId) {
+      return NextResponse.json({ error: `Stripe price is not configured for ${track.slug}.` }, { status: 503 });
+    }
+
+    if (expectedPrice && Number(track.monthly_price) !== expectedPrice) {
+      return NextResponse.json({ error: `Configured monthly price for ${track.slug} must be $${expectedPrice}.` }, { status: 500 });
+    }
+
+    const { data: activeTrackSubscription } = await supabaseAdmin
+      .from('subscriptions')
+      .select('id,status')
+      .eq('user_id', userId)
+      .eq('exam_track_id', track.id)
+      .in('status', [...SUBSCRIPTION_ACCESS_STATUSES])
+      .maybeSingle();
+
+    if (activeTrackSubscription) {
+      return NextResponse.json({ error: 'This account already has active access to this exam track.' }, { status: 409 });
+    }
+
+    const { data: existingSubscription } = await supabaseAdmin
+      .from('subscriptions')
+      .select('stripe_customer_id')
+      .eq('user_id', userId)
+      .not('stripe_customer_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
-      customer_email: email,
+      ...(existingSubscription?.stripe_customer_id
+        ? { customer: existingSubscription.stripe_customer_id }
+        : { customer_email: email }),
       line_items: [
         {
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: `PrepCzar - ${trackName}`,
-              description: `Monthly subscription for ${trackName} exam preparation`,
-            },
-            unit_amount: Math.round(Number(track.monthly_price) * 100),
-            recurring: { interval: 'month' },
-          },
+          price: priceId,
           quantity: 1,
         },
       ],
+      allow_promotion_codes: false,
       success_url: `${siteUrl}/auth/payment-confirmed?track=${track.slug}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}/auth/signup?track=${track.slug}&canceled=true`,
+      client_reference_id: userId,
       metadata: {
         userId,
         examTrackId: track.id,
         examTrackSlug: track.slug,
         signupCheckout: 'true',
+        priceId,
+      },
+      subscription_data: {
+        metadata: {
+          userId,
+          examTrackId: track.id,
+          examTrackSlug: track.slug,
+          signupCheckout: 'true',
+          priceId,
+        },
       },
     });
 

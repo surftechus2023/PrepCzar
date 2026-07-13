@@ -25,7 +25,7 @@ function PaymentConfirmedShell() {
 function PaymentConfirmedContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('session_id');
-  const [status, setStatus] = useState<'syncing' | 'synced' | 'error'>(sessionId ? 'syncing' : 'synced');
+  const [status, setStatus] = useState<'checking' | 'confirmed' | 'error'>(sessionId ? 'checking' : 'confirmed');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -42,7 +42,7 @@ function PaymentConfirmedContent() {
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'Could not confirm checkout');
-        if (active) setStatus('synced');
+        if (active) setStatus('confirmed');
       } catch (err: any) {
         if (active) {
           setError(err.message || 'Could not confirm checkout');
@@ -68,11 +68,11 @@ function PaymentConfirmedContent() {
         <p className="text-slate-600 mb-6">
           Stripe has received your payment. We&apos;ll confirm your subscription and send a sign-in link to the email used at checkout.
         </p>
-        {status === 'syncing' && (
+        {status === 'checking' && (
           <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-left mb-6">
             <div className="flex gap-3">
               <Loader2 className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0 animate-spin" />
-              <p className="text-sm text-slate-700">Confirming your subscription access in Supabase...</p>
+              <p className="text-sm text-slate-700">Checking Stripe payment status. Access is activated by webhook processing.</p>
             </div>
           </div>
         )}

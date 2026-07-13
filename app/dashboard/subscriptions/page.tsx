@@ -132,7 +132,7 @@ export default function SubscriptionsPage() {
     .some(t => t.subscription?.stripe_customer_id);
   const activeTracks = categories
     .flatMap(c => c.tracks)
-    .filter(t => t.subscription?.status === 'active');
+    .filter(t => t.subscription?.status === 'active' || t.subscription?.status === 'trialing');
 
   if (loading) {
     return (
@@ -218,7 +218,7 @@ export default function SubscriptionsPage() {
 
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {cat.tracks.map((track) => {
-                  const isActive = track.subscription?.status === 'active';
+                  const isActive = track.subscription?.status === 'active' || track.subscription?.status === 'trialing';
 
                   return (
                     <Card

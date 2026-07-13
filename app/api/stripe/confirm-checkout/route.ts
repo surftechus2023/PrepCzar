@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { syncCheckoutSession } from '@/lib/stripe-sync';
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2026-05-27.dahlia' as any })
@@ -20,13 +19,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing Stripe checkout session id' }, { status: 400 });
     }
 
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
-    if (session.payment_status !== 'paid') {
-      return NextResponse.json({ error: 'Checkout session is not paid yet' }, { status: 400 });
-    }
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ['subscription'],
+    });
 
-    const result = await syncCheckoutSession(stripe, session);
-    return NextResponse.json(result);
+    return NextResponse.json({
+      received: true,
+      paymentStatus: session.payment_status,
+      subscriptionStatus: typeof session.subscription === 'object' ? session.subscription?.status : null,
+      accessSource: 'stripe_webhook',
+      message: 'Payment status confirmed. Subscription access is granted only after Stripe webhook processing.',
+    });
   } catch (err: any) {
     console.error('Confirm checkout error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
