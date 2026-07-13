@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, createContext, useContext } from 'react';
+import { useState, useEffect, createContext, useContext, useCallback } from 'react';
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { authenticatedFetch } from '@/lib/api';
@@ -12,6 +12,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   isAdmin: boolean;
+  refreshProfile: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType>({
@@ -20,6 +21,7 @@ export const AuthContext = createContext<AuthContextType>({
   session: null,
   loading: true,
   isAdmin: false,
+  refreshProfile: async () => {},
 });
 
 export function useAuth() {
@@ -31,6 +33,36 @@ export function useAuthState() {
   const [profile, setProfile] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const fetchProfile = useCallback(async (userId: string) => {
+    try {
+      const res = await authenticatedFetch('/api/auth/ensure-profile', { method: 'POST' });
+      const json = await res.json();
+      setProfile(res.ok ? json.profile : null);
+      if (!res.ok) {
+        console.error('Could not create missing profile:', json.error);
+      }
+    } catch (err: any) {
+      console.error('Could not repair profile:', err.message);
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Could not fetch profile:', error.message);
+      }
+
+      setProfile(data || null);
+    }
+
+    setLoading(false);
+  }, []);
+
+  const refreshProfile = useCallback(async () => {
+    if (user?.id) await fetchProfile(user.id);
+  }, [fetchProfile, user?.id]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -57,33 +89,7 @@ export function useAuthState() {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
-
-  async function fetchProfile(userId: string) {
-    try {
-      const res = await authenticatedFetch('/api/auth/ensure-profile', { method: 'POST' });
-      const json = await res.json();
-      setProfile(res.ok ? json.profile : null);
-      if (!res.ok) {
-        console.error('Could not create missing profile:', json.error);
-      }
-    } catch (err: any) {
-      console.error('Could not repair profile:', err.message);
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Could not fetch profile:', error.message);
-      }
-
-      setProfile(data || null);
-    }
-
-    setLoading(false);
-  }
+  }, [fetchProfile]);
 
   return {
     user,
@@ -91,5 +97,6 @@ export function useAuthState() {
     session,
     loading,
     isAdmin: profile?.role === 'admin',
+    refreshProfile,
   };
 }

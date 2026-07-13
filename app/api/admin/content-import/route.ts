@@ -9,6 +9,7 @@ import { parseDocxBuffer } from '@/lib/content-import/parse-docx';
 import { parsePdfBuffer } from '@/lib/content-import/parse-pdf';
 import { parseTextContent } from '@/lib/content-import/parse-text';
 import type { ImportedContentType, ImportCleanupMode, ParsedImportItem } from '@/lib/content-import/types';
+import { translateMcqFields } from '@/lib/content-translation';
 import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 
@@ -304,45 +305,57 @@ export async function PUT(req: NextRequest) {
     let insertedIds: string[] = [];
     let rejectedReasons: string[] = [];
     if (body.contentType === 'mcq') {
-      const rows = selected.map((item) => ({
-        ...common,
-        social_work_blueprint_item_id: body.socialWorkBlueprintItemId || null,
-        blueprint_content_area: body.blueprintContentArea || defaults.blueprintItem?.major_content_area || null,
-        blueprint_competency_section: body.blueprintCompetencySection || defaults.blueprintItem?.competency_section || null,
-        applied_knowledge_statement: body.appliedKnowledgeStatement || defaults.blueprintItem?.applied_knowledge_statement || null,
-        question_writing_guideline: body.questionWritingGuideline || defaults.blueprintItem?.sample_style_guidance || null,
-        intended_cognitive_level: body.cognitiveLevel || 'application',
-        blueprint_reference_text: body.blueprintReferenceText || defaults.blueprintItem?.official_blueprint_text || defaults.subtopic?.official_blueprint_text || defaults.topic?.official_blueprint_text || null,
-        difficulty: body.difficulty,
-        question_en: item.fields.question,
-        question_es: '',
-        question_fr: '',
-        option_a_en: item.fields.option_a,
-        option_a_es: '',
-        option_a_fr: '',
-        option_b_en: item.fields.option_b,
-        option_b_es: '',
-        option_b_fr: '',
-        option_c_en: item.fields.option_c,
-        option_c_es: '',
-        option_c_fr: '',
-        option_d_en: item.fields.option_d || '',
-        option_d_es: '',
-        option_d_fr: '',
-        correct_option: item.fields.correct_option || 'a',
-        rationale_en: item.fields.rationale || '',
-        rationale_es: '',
-        rationale_fr: '',
-        correct_rationale_en: item.fields.rationale || '',
-        subtopic: defaults.subtopic?.title || null,
-        learning_objective: body.learningObjective || defaults.blueprintItem?.applied_knowledge_statement || defaults.subtopic?.learning_objective || null,
-        cognitive_level: body.cognitiveLevel || 'application',
-        source_topic: defaults.topic?.title || null,
-        duplicate_hash: duplicateHash(body.examTrackId, 'mcq', item.fields.question || ''),
-        generated_by_ai: false,
-        integrity_status: 'pending',
-        original_import_text: item.originalText,
-      }));
+      const rows = [];
+      for (const item of selected) {
+        const translations = await translateMcqFields({
+          question_en: item.fields.question || '',
+          option_a_en: item.fields.option_a || '',
+          option_b_en: item.fields.option_b || '',
+          option_c_en: item.fields.option_c || '',
+          option_d_en: item.fields.option_d || '',
+          rationale_en: item.fields.rationale || '',
+        });
+
+        rows.push({
+          ...common,
+          social_work_blueprint_item_id: body.socialWorkBlueprintItemId || null,
+          blueprint_content_area: body.blueprintContentArea || defaults.blueprintItem?.major_content_area || null,
+          blueprint_competency_section: body.blueprintCompetencySection || defaults.blueprintItem?.competency_section || null,
+          applied_knowledge_statement: body.appliedKnowledgeStatement || defaults.blueprintItem?.applied_knowledge_statement || null,
+          question_writing_guideline: body.questionWritingGuideline || defaults.blueprintItem?.sample_style_guidance || null,
+          intended_cognitive_level: body.cognitiveLevel || 'application',
+          blueprint_reference_text: body.blueprintReferenceText || defaults.blueprintItem?.official_blueprint_text || defaults.subtopic?.official_blueprint_text || defaults.topic?.official_blueprint_text || null,
+          difficulty: body.difficulty,
+          question_en: item.fields.question,
+          question_es: translations.question_es,
+          question_fr: translations.question_fr,
+          option_a_en: item.fields.option_a,
+          option_a_es: translations.option_a_es,
+          option_a_fr: translations.option_a_fr,
+          option_b_en: item.fields.option_b,
+          option_b_es: translations.option_b_es,
+          option_b_fr: translations.option_b_fr,
+          option_c_en: item.fields.option_c,
+          option_c_es: translations.option_c_es,
+          option_c_fr: translations.option_c_fr,
+          option_d_en: item.fields.option_d || '',
+          option_d_es: translations.option_d_es,
+          option_d_fr: translations.option_d_fr,
+          correct_option: item.fields.correct_option || 'a',
+          rationale_en: item.fields.rationale || '',
+          rationale_es: translations.rationale_es,
+          rationale_fr: translations.rationale_fr,
+          correct_rationale_en: item.fields.rationale || '',
+          subtopic: defaults.subtopic?.title || null,
+          learning_objective: body.learningObjective || defaults.blueprintItem?.applied_knowledge_statement || defaults.subtopic?.learning_objective || null,
+          cognitive_level: body.cognitiveLevel || 'application',
+          source_topic: defaults.topic?.title || null,
+          duplicate_hash: duplicateHash(body.examTrackId, 'mcq', item.fields.question || ''),
+          generated_by_ai: false,
+          integrity_status: 'pending',
+          original_import_text: item.originalText,
+        });
+      }
       const existingHashes = await loadExistingDuplicateHashes(supabaseAdmin, 'questions', rows.map((row) => row.duplicate_hash));
       const filtered = rejectDuplicateRows(rows, existingHashes, 'MCQ');
       rejectedReasons = filtered.rejectedReasons;

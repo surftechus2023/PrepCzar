@@ -25,6 +25,7 @@ import {
 import { getExamTrackRules, isRecallOnlyStem } from '@/lib/content-generation/exam-track-rules';
 import { buildBlueprintContext } from '@/lib/blueprint/blueprint-context-builder';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
+import { translateMcqFields } from '@/lib/content-translation';
 
 export const dynamic = 'force-dynamic';
 
@@ -404,6 +405,28 @@ export async function POST(req: NextRequest) {
           duplicate_hash: quality.duplicateHash,
         });
 
+        const fallbackTranslations = (
+          question.question_es
+          && question.question_fr
+          && question.option_a_es
+          && question.option_a_fr
+          && question.option_b_es
+          && question.option_b_fr
+          && question.option_c_es
+          && question.option_c_fr
+          && question.option_d_es
+          && question.option_d_fr
+        )
+          ? null
+          : await translateMcqFields({
+            question_en: question.question,
+            option_a_en: question.option_a,
+            option_b_en: question.option_b,
+            option_c_en: question.option_c,
+            option_d_en: question.option_d,
+            rationale_en: question.correct_rationale,
+          });
+
         const row = {
           exam_track_id: body.examTrackId,
           topic_id: canonicalTopicId,
@@ -416,12 +439,24 @@ export async function POST(req: NextRequest) {
           intended_cognitive_level: blueprintContext.cognitiveLevelTarget,
           blueprint_reference_text: blueprintReferenceText || null,
           question_en: question.question,
+          question_es: question.question_es || fallbackTranslations?.question_es || '',
+          question_fr: question.question_fr || fallbackTranslations?.question_fr || '',
           option_a_en: question.option_a,
+          option_a_es: question.option_a_es || fallbackTranslations?.option_a_es || '',
+          option_a_fr: question.option_a_fr || fallbackTranslations?.option_a_fr || '',
           option_b_en: question.option_b,
+          option_b_es: question.option_b_es || fallbackTranslations?.option_b_es || '',
+          option_b_fr: question.option_b_fr || fallbackTranslations?.option_b_fr || '',
           option_c_en: question.option_c,
+          option_c_es: question.option_c_es || fallbackTranslations?.option_c_es || '',
+          option_c_fr: question.option_c_fr || fallbackTranslations?.option_c_fr || '',
           option_d_en: question.option_d,
+          option_d_es: question.option_d_es || fallbackTranslations?.option_d_es || '',
+          option_d_fr: question.option_d_fr || fallbackTranslations?.option_d_fr || '',
           correct_option: question.correct_option.toLowerCase(),
           rationale_en: question.correct_rationale,
+          rationale_es: question.correct_rationale_es || fallbackTranslations?.rationale_es || '',
+          rationale_fr: question.correct_rationale_fr || fallbackTranslations?.rationale_fr || '',
           difficulty: question.difficulty,
           reviewed: false,
           active: false,

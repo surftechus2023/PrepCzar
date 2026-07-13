@@ -1,38 +1,47 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { User, Mail, Globe, Loader2, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { authenticatedFetch } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 
 export default function ProfilePage() {
-  const { profile, user } = useAuth();
+  const { profile, user, refreshProfile } = useAuth();
   const [fullName, setFullName] = useState(profile?.full_name || '');
   const [language, setLanguage] = useState(profile?.preferred_language || 'en');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const { toast } = useToast();
 
+  useEffect(() => {
+    if (profile) {
+      setFullName(profile.full_name || '');
+      setLanguage(profile.preferred_language || 'en');
+    }
+  }, [profile]);
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!profile) return;
     setSaving(true);
 
-    const { error } = await supabase
-      .from('users')
-      .update({ full_name: fullName, preferred_language: language as any })
-      .eq('id', profile.id);
+    const res = await authenticatedFetch('/api/dashboard/profile', {
+      method: 'PATCH',
+      body: JSON.stringify({ full_name: fullName, preferred_language: language }),
+    });
+    const data = await res.json();
 
     setSaving(false);
 
-    if (error) {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    if (!res.ok) {
+      toast({ title: 'Error', description: data.error || 'Could not save profile.', variant: 'destructive' });
     } else {
+      await refreshProfile();
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     }

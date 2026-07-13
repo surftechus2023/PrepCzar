@@ -11,12 +11,24 @@ const percentMixSchema = z.record(z.string(), z.number().int().min(0).max(100));
 
 export const generatedQuestionSchema = z.object({
   question: z.string().min(40),
+  question_es: z.string().optional(),
+  question_fr: z.string().optional(),
   option_a: z.string().min(1),
+  option_a_es: z.string().optional(),
+  option_a_fr: z.string().optional(),
   option_b: z.string().min(1),
+  option_b_es: z.string().optional(),
+  option_b_fr: z.string().optional(),
   option_c: z.string().min(1),
+  option_c_es: z.string().optional(),
+  option_c_fr: z.string().optional(),
   option_d: z.string().min(1),
+  option_d_es: z.string().optional(),
+  option_d_fr: z.string().optional(),
   correct_option: z.enum(['A', 'B', 'C', 'D']),
   correct_rationale: z.string().min(20),
+  correct_rationale_es: z.string().optional(),
+  correct_rationale_fr: z.string().optional(),
   option_a_rationale: z.string().min(10),
   option_b_rationale: z.string().min(10),
   option_c_rationale: z.string().min(10),
@@ -125,12 +137,24 @@ function normalizeGeneratedQuestion(raw: any, fallback: QuestionGenerationInput)
 
   return {
     question: textValue(raw?.question, raw?.question_en, raw?.stem),
+    question_es: textValue(raw?.question_es),
+    question_fr: textValue(raw?.question_fr),
     option_a: optionA,
+    option_a_es: textValue(raw?.option_a_es),
+    option_a_fr: textValue(raw?.option_a_fr),
     option_b: optionB,
+    option_b_es: textValue(raw?.option_b_es),
+    option_b_fr: textValue(raw?.option_b_fr),
     option_c: optionC,
+    option_c_es: textValue(raw?.option_c_es),
+    option_c_fr: textValue(raw?.option_c_fr),
     option_d: optionD,
+    option_d_es: textValue(raw?.option_d_es),
+    option_d_fr: textValue(raw?.option_d_fr),
     correct_option: correctOption,
     correct_rationale: correctRationale,
+    correct_rationale_es: textValue(raw?.correct_rationale_es, raw?.rationale_es),
+    correct_rationale_fr: textValue(raw?.correct_rationale_fr, raw?.rationale_fr),
     option_a_rationale: textValue(raw?.option_a_rationale, raw?.option_a_rationale_en, rationales.a, rationales.A, correctOption === 'A' ? correctRationale : `Option A is less appropriate because ${optionA} does not best address the scenario.`),
     option_b_rationale: textValue(raw?.option_b_rationale, raw?.option_b_rationale_en, rationales.b, rationales.B, correctOption === 'B' ? correctRationale : `Option B is less appropriate because ${optionB} does not best address the scenario.`),
     option_c_rationale: textValue(raw?.option_c_rationale, raw?.option_c_rationale_en, rationales.c, rationales.C, correctOption === 'C' ? correctRationale : `Option C is less appropriate because ${optionC} does not best address the scenario.`),
@@ -255,6 +279,8 @@ Strict alignment and quality rules:
 - Include detailed explanation for each incorrect answer.
 - Include a concise test-taking tip.
 - Use the selected subtopic and learning objective explicitly in the reasoning, not as decorative metadata.
+- Store multilingual content in the response. English fields are the source of truth, but Spanish and French fields must be real translations, not empty strings and not English copies.
+- Translate the question stem, every answer option, and correct rationale into Spanish and French.
 - Return valid JSON only.
 
 Return exactly this JSON shape:
@@ -262,12 +288,24 @@ Return exactly this JSON shape:
   "questions": [
     {
       "question": "string",
+      "question_es": "string",
+      "question_fr": "string",
       "option_a": "string",
+      "option_a_es": "string",
+      "option_a_fr": "string",
       "option_b": "string",
+      "option_b_es": "string",
+      "option_b_fr": "string",
       "option_c": "string",
+      "option_c_es": "string",
+      "option_c_fr": "string",
       "option_d": "string",
+      "option_d_es": "string",
+      "option_d_fr": "string",
       "correct_option": "A",
       "correct_rationale": "string",
+      "correct_rationale_es": "string",
+      "correct_rationale_fr": "string",
       "option_a_rationale": "string",
       "option_b_rationale": "string",
       "option_c_rationale": "string",

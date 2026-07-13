@@ -32,6 +32,7 @@ import {
 } from '@/lib/content-generation/vignette-generator';
 import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
+import { translateMcqFields } from '@/lib/content-translation';
 
 export const dynamic = 'force-dynamic';
 
@@ -271,16 +272,39 @@ export async function POST(req: NextRequest) {
         });
 
         quantityGenerated += questions.length;
-        const rows = questions.flatMap((question) => {
+        const rows = [];
+        for (const question of questions) {
           const reason = rejectIfWeakText(question.question, 'mcq');
           const hash = duplicateHash(body!.examTrackId, 'mcq', question.question);
           if (reason || seenHashes.has(hash)) {
             quantityRejected += 1;
             rejectedReasons.push(reason || 'Duplicate MCQ candidate.');
-            return [];
+            continue;
           }
           seenHashes.add(hash);
-          return [{
+          const fallbackTranslations = (
+            question.question_es
+            && question.question_fr
+            && question.option_a_es
+            && question.option_a_fr
+            && question.option_b_es
+            && question.option_b_fr
+            && question.option_c_es
+            && question.option_c_fr
+            && question.option_d_es
+            && question.option_d_fr
+          )
+            ? null
+            : await translateMcqFields({
+              question_en: question.question,
+              option_a_en: question.option_a,
+              option_b_en: question.option_b,
+              option_c_en: question.option_c,
+              option_d_en: question.option_d,
+              rationale_en: question.correct_rationale,
+            });
+
+          rows.push({
             exam_track_id: body!.examTrackId,
             topic_id: blueprintContext.topicId,
             subtopic_id: blueprintContext.subtopicId || null,
@@ -292,12 +316,24 @@ export async function POST(req: NextRequest) {
             intended_cognitive_level: blueprintContext.cognitiveLevelTarget,
             blueprint_reference_text: blueprintContext.officialBlueprintText,
             question_en: question.question,
+            question_es: question.question_es || fallbackTranslations?.question_es || '',
+            question_fr: question.question_fr || fallbackTranslations?.question_fr || '',
             option_a_en: question.option_a,
+            option_a_es: question.option_a_es || fallbackTranslations?.option_a_es || '',
+            option_a_fr: question.option_a_fr || fallbackTranslations?.option_a_fr || '',
             option_b_en: question.option_b,
+            option_b_es: question.option_b_es || fallbackTranslations?.option_b_es || '',
+            option_b_fr: question.option_b_fr || fallbackTranslations?.option_b_fr || '',
             option_c_en: question.option_c,
+            option_c_es: question.option_c_es || fallbackTranslations?.option_c_es || '',
+            option_c_fr: question.option_c_fr || fallbackTranslations?.option_c_fr || '',
             option_d_en: question.option_d,
+            option_d_es: question.option_d_es || fallbackTranslations?.option_d_es || '',
+            option_d_fr: question.option_d_fr || fallbackTranslations?.option_d_fr || '',
             correct_option: question.correct_option.toLowerCase(),
             rationale_en: question.correct_rationale,
+            rationale_es: question.correct_rationale_es || fallbackTranslations?.rationale_es || '',
+            rationale_fr: question.correct_rationale_fr || fallbackTranslations?.rationale_fr || '',
             correct_rationale_en: question.correct_rationale,
             option_a_rationale_en: question.option_a_rationale,
             option_b_rationale_en: question.option_b_rationale,
@@ -315,8 +351,8 @@ export async function POST(req: NextRequest) {
             integrity_status: 'pending',
             reviewed: false,
             active: false,
-          }];
-        });
+          });
+        }
 
         if (rows.length) {
           const { data: inserted, error } = await supabaseAdmin.from('questions').insert(rows).select('id');
