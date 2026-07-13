@@ -64,6 +64,9 @@ export default function AdminOverviewPage() {
         </div>
         <div className="flex gap-2">
           <Button asChild variant="outline">
+            <Link href="/admin/ai-settings">AI Settings</Link>
+          </Button>
+          <Button asChild variant="outline">
             <Link href="/admin/content-import">Import Content</Link>
           </Button>
           <Button asChild variant="outline">
@@ -108,6 +111,7 @@ export default function AdminOverviewPage() {
             {[
               { label: 'AI Question Generation', href: '/admin/content-generation', desc: 'Create blueprint-aware Social Work MCQs' },
               { label: 'Generate Content', href: '/admin/generate', desc: 'Create questions, flashcards and vignettes' },
+              { label: 'AI Model Settings', href: '/admin/ai-settings', desc: 'Configure models, provider settings, and AI cost controls' },
               { label: 'Import / Manual Authoring', href: '/admin/content-import', desc: 'Import files, paste text, or manually author drafts' },
               { label: 'Manage Questions', href: '/admin/questions', desc: 'Review, edit and publish questions' },
               { label: 'Integrity Review', href: '/admin/review-questions', desc: 'Validate, score, flag and publish generated MCQs' },

@@ -1,11 +1,18 @@
 import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import {
+  assertAdminGenerationWithinLimits,
+  estimateModelCost,
+  estimateTokensForGeneration,
+  logAIUsage,
+  resolveAIModelSetting,
+  type AIModelTask,
+} from '@/lib/ai/model-settings';
 import { checkAndUpdateQuestionIntegrity } from '@/lib/content-integrity/question-integrity-checker';
 import { INTEGRITY_THRESHOLDS } from '@/lib/content-integrity/integrity-gates';
 import { autoImproveStoredQuestion } from '@/lib/content-integrity/question-improver';
 import {
-  estimatedOpenAICost,
   loadRequiredBlueprintContext,
 } from '@/lib/content-generation/blueprint-context';
 import {
@@ -63,6 +70,12 @@ function modelForType(type: GenerateRequest['type']) {
   if (type === 'flashcards') return FLASHCARD_GENERATOR_MODEL;
   if (type === 'vignettes') return VIGNETTE_GENERATOR_MODEL;
   return QUESTION_GENERATOR_MODEL;
+}
+
+function modelTaskForType(type: GenerateRequest['type']): AIModelTask {
+  if (type === 'flashcards') return 'flashcard_generation';
+  if (type === 'vignettes') return 'case_vignette_generation';
+  return 'mcq_generation';
 }
 
 function promptVersionForType(type: GenerateRequest['type']) {
@@ -172,6 +185,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid generation request', details: parsed.error.flatten() }, { status: 400 });
     }
     body = parsed.data;
+    await assertAdminGenerationWithinLimits(supabaseAdmin, adminUser.id, body.count);
+    const generationModel = await resolveAIModelSetting(supabaseAdmin, modelTaskForType(body.type));
+    const improvementModel = await resolveAIModelSetting(supabaseAdmin, 'auto_improvement');
+    const estimatedTokens = estimateTokensForGeneration(body.count);
+    const estimatedCost = estimateModelCost(generationModel.model_name, estimatedTokens.inputTokens, estimatedTokens.outputTokens);
 
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json({ error: 'OPENAI_API_KEY is not configured.' }, { status: 503 });
@@ -198,7 +216,7 @@ export async function POST(req: NextRequest) {
         content_type: body.type,
         quantity_requested: body.count,
         status: 'running',
-        model_used: modelForType(body.type),
+        model_used: generationModel.model_name,
         prompt_version: promptVersionForType(body.type),
       })
       .select('id')
@@ -243,6 +261,7 @@ export async function POST(req: NextRequest) {
           sampleStyleGuidance: blueprintContext.questionWritingGuidelines,
           intendedCognitiveLevel: blueprintContext.cognitiveLevelTarget,
           intendedDifficulty: blueprintContext.difficultyTarget,
+          model: generationModel.model_name,
           quantity,
           difficultyMix: { easy: 0, medium: blueprintContext.difficultyTarget === 'medium' ? 100 : 0, hard: blueprintContext.difficultyTarget === 'hard' ? 100 : 0 },
           cognitiveLevelMix: { recall: 0, application: blueprintContext.cognitiveLevelTarget === 'application' ? 100 : 50, analysis: blueprintContext.cognitiveLevelTarget === 'application' ? 0 : 50 },
@@ -312,12 +331,12 @@ export async function POST(req: NextRequest) {
                 || checked.result.integrity_score < INTEGRITY_THRESHOLDS.overallIntegrity
               )
             ) {
-              await autoImproveStoredQuestion(supabaseAdmin, question.id);
+              await autoImproveStoredQuestion(supabaseAdmin, question.id, improvementModel.model_name);
             }
           }
         }
       } else if (body.type === 'flashcards') {
-        const cards = await generateFlashcardsFromBlueprint({ context: blueprintContext, quantity, language: body.language });
+        const cards = await generateFlashcardsFromBlueprint({ context: blueprintContext, quantity, language: body.language, model: generationModel.model_name });
         quantityGenerated += cards.length;
         const rows = cards.flatMap((card) => {
           const reason = rejectIfWeakText(card.front_en, 'flashcards');
@@ -357,7 +376,7 @@ export async function POST(req: NextRequest) {
           insertedIds.push(...((inserted || []) as Array<{ id: string }>).map((row) => row.id));
         }
       } else {
-        const vignettes = await generateVignettesFromBlueprint({ context: blueprintContext, quantity, language: body.language });
+        const vignettes = await generateVignettesFromBlueprint({ context: blueprintContext, quantity, language: body.language, model: generationModel.model_name });
         quantityGenerated += vignettes.length;
         const rows = vignettes.flatMap((vignette) => {
           const reason = rejectIfWeakText(vignette.case_en, 'vignettes');
@@ -416,7 +435,6 @@ export async function POST(req: NextRequest) {
         .eq('id', batchId);
     }
 
-    const estimatedCost = estimatedOpenAICost(quantityGenerated);
     await supabaseAdmin
       .from('ai_generation_batches')
       .update({
@@ -438,9 +456,19 @@ export async function POST(req: NextRequest) {
       generated_count: quantityInserted,
       duplicate_count: quantityRejected,
       status: 'success',
-      model_used: modelForType(body.type),
+      model_used: generationModel.model_name,
       estimated_cost: estimatedCost,
       rejected_reasons: rejectedReasons,
+    });
+
+    await logAIUsage(supabaseAdmin, {
+      actionType: generationModel.setting_key,
+      modelName: generationModel.model_name,
+      inputTokens: estimatedTokens.inputTokens,
+      outputTokens: estimatedTokens.outputTokens,
+      relatedBatchId: batchId,
+      adminUserId,
+      success: true,
     });
 
     return NextResponse.json({
@@ -451,7 +479,7 @@ export async function POST(req: NextRequest) {
       quantityRejected,
       insertedIds,
       rejectedReasons,
-      modelUsed: modelForType(body.type),
+      modelUsed: generationModel.model_name,
       estimatedCost,
       type: body.type,
     });

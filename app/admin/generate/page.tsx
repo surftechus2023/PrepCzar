@@ -43,6 +43,13 @@ interface BatchHistoryItem {
   topic?: { title: string | null } | null;
 }
 
+interface AISetting {
+  setting_key: string;
+  label: string;
+  model_name: string;
+  estimated_cost_for_10: number;
+}
+
 function normalizeBlueprintLabel(value: string | null | undefined) {
   return (value || '')
     .toLowerCase()
@@ -67,6 +74,7 @@ export default function AdminGeneratePage() {
   const [subtopics, setSubtopics] = useState<Subtopic[]>([]);
   const [socialWorkBlueprintItems, setSocialWorkBlueprintItems] = useState<SocialWorkBlueprintItem[]>([]);
   const [batchHistory, setBatchHistory] = useState<BatchHistoryItem[]>([]);
+  const [aiSettings, setAiSettings] = useState<AISetting[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedTrack, setSelectedTrack] = useState('');
   const [selectedTopic, setSelectedTopic] = useState('');
@@ -83,6 +91,7 @@ export default function AdminGeneratePage() {
   useEffect(() => {
     loadOptions();
     loadBatchHistory();
+    loadAISettings();
   }, []);
 
   useEffect(() => {
@@ -101,6 +110,21 @@ export default function AdminGeneratePage() {
     const res = await authenticatedFetch('/api/admin/generate');
     const data = await res.json();
     if (res.ok) setBatchHistory(data.batches || []);
+  }
+
+  async function loadAISettings() {
+    const response = await authenticatedFetch('/api/admin/ai-settings');
+    const data = await response.json();
+    if (response.ok) setAiSettings(data.settings || []);
+  }
+
+  function selectedAISetting() {
+    const key = contentType === 'flashcards'
+      ? 'flashcard_generation'
+      : contentType === 'vignettes'
+        ? 'case_vignette_generation'
+        : 'mcq_generation';
+    return aiSettings.find((setting) => setting.setting_key === key);
   }
 
   async function loadOptions(params: { categoryId?: string; trackId?: string; topicId?: string } = {}) {
@@ -379,6 +403,18 @@ export default function AdminGeneratePage() {
                 </select>
               </div>
             </div>
+
+            {selectedAISetting() && (
+              <div className="rounded-md border border-border bg-muted/20 p-3 text-sm">
+                <p className="font-medium">Estimated AI cost before generation</p>
+                <p className="text-muted-foreground">
+                  Requested: {count} · Model: {selectedAISetting()?.model_name} · Estimated cost range: $
+                  {Math.max(0.000001, ((selectedAISetting()?.estimated_cost_for_10 || 0) * count) / 10).toFixed(6)}
+                  {' '}to ${Math.max(0.000001, (((selectedAISetting()?.estimated_cost_for_10 || 0) * count) / 10) * 1.5).toFixed(6)}
+                </p>
+                <p className="text-xs text-muted-foreground">Actual cost may differ based on prompt size, output length, and provider token accounting.</p>
+              </div>
+            )}
 
             <Button
               className="w-full"

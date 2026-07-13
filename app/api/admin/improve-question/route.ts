@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { logAIUsage, resolveAIModelSetting } from '@/lib/ai/model-settings';
 import { autoImproveStoredQuestion } from '@/lib/content-integrity/question-improver';
 import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
 
@@ -21,7 +22,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid improvement request', details: parsed.error.flatten() }, { status: 400 });
     }
 
-    const checked = await autoImproveStoredQuestion(getSupabaseAdmin(), parsed.data.question_id);
+    const supabaseAdmin = getSupabaseAdmin();
+    const model = await resolveAIModelSetting(supabaseAdmin, 'auto_improvement');
+    const checked = await autoImproveStoredQuestion(supabaseAdmin, parsed.data.question_id, model.model_name);
+    await logAIUsage(supabaseAdmin, {
+      actionType: 'auto_improvement',
+      modelName: model.model_name,
+      inputTokens: 2200,
+      outputTokens: 1000,
+      relatedRecordId: parsed.data.question_id,
+      adminUserId: adminUser.id,
+      success: true,
+    });
 
     return NextResponse.json({
       question_id: parsed.data.question_id,

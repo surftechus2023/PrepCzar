@@ -204,7 +204,7 @@ function normalizeGeneratedQuestion(value: any, metadata: ImprovementMetadata): 
   return generatedQuestionSchema.parse(candidate);
 }
 
-async function rewriteQuestion(input: ImproveGeneratedQuestionInput) {
+async function rewriteQuestion(input: ImproveGeneratedQuestionInput, modelName = CONTENT_IMPROVEMENT_MODEL) {
   const openai = getOpenAIClient();
   const { question, metadata, integrityResult } = input;
 
@@ -283,8 +283,8 @@ Rewrite requirements:
 Return only one JSON object matching the generated question schema.`;
 
   const completion = await openai.chat.completions.create({
-    model: CONTENT_IMPROVEMENT_MODEL,
-    ...temperatureOption(CONTENT_IMPROVEMENT_MODEL, 0.25),
+    model: modelName,
+    ...temperatureOption(modelName, 0.25),
     messages: [
       {
         role: 'system',
@@ -319,8 +319,8 @@ Return only one JSON object matching the generated question schema.`;
 
 }
 
-export async function improveGeneratedQuestionOnce(input: ImproveGeneratedQuestionInput) {
-  const improvedQuestion = await rewriteQuestion(input);
+export async function improveGeneratedQuestionOnce(input: ImproveGeneratedQuestionInput, modelName = CONTENT_IMPROVEMENT_MODEL) {
+  const improvedQuestion = await rewriteQuestion(input, modelName);
   const improvedIntegrity = evaluateGeneratedQuestionIntegrity(improvedQuestion, input.metadata);
 
   return {
@@ -357,7 +357,7 @@ function storedQuestionToGenerated(question: Question, metadata: ImprovementMeta
   };
 }
 
-export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, questionId: string) {
+export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, questionId: string, modelName = CONTENT_IMPROVEMENT_MODEL) {
   const { checkAndUpdateQuestionIntegrity } = await import('@/lib/content-integrity/question-integrity-checker');
   const { data, error } = await supabaseAdmin
     .from('questions')
@@ -444,7 +444,7 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
     question: storedQuestionToGenerated(question, metadata),
     metadata,
     integrityResult: currentIntegrity,
-  });
+  }, modelName);
 
   const nextAttempts = attempts + 1;
   const improvementNotes = [
@@ -476,7 +476,7 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
         currentIntegrity.integrity_review_notes,
       ].filter(Boolean),
       improvement_notes: improved.improvementNotes,
-      model_used: CONTENT_IMPROVEMENT_MODEL,
+      model_used: modelName,
     });
 
   await supabaseAdmin

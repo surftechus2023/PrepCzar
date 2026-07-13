@@ -71,6 +71,7 @@ export const questionGenerationInputSchema = z.object({
   sampleStyleGuidance: z.string().optional().nullable(),
   intendedCognitiveLevel: z.string().optional().nullable(),
   intendedDifficulty: z.enum(['medium', 'hard']).optional().nullable(),
+  model: z.string().optional(),
   quantity: z.number().int().min(1).max(25),
   difficultyMix: percentMixSchema,
   cognitiveLevelMix: percentMixSchema,
@@ -282,9 +283,10 @@ Return exactly this JSON shape:
   ]
 }`;
 
+  const model = parsedInput.model || QUESTION_GENERATOR_MODEL;
   const completion = await openai.chat.completions.create({
-    model: QUESTION_GENERATOR_MODEL,
-    ...temperatureOption(QUESTION_GENERATOR_MODEL, 0.4),
+    model,
+    ...temperatureOption(model, 0.4),
     messages: [
       {
         role: 'system',

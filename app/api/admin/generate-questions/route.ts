@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import {
+  assertAdminGenerationWithinLimits,
+  estimateModelCost,
+  estimateTokensForGeneration,
+  logAIUsage,
+  resolveAIModelSetting,
+} from '@/lib/ai/model-settings';
 import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
 import {
-  QUESTION_GENERATOR_MODEL,
   QUESTION_PROMPT_VERSION,
   generateQuestions,
 } from '@/lib/openai/question-generator';
@@ -91,6 +97,11 @@ export async function POST(req: NextRequest) {
     }
 
     const body = parsed.data;
+    await assertAdminGenerationWithinLimits(supabaseAdmin, adminUser.id, body.quantity);
+    const generationModel = await resolveAIModelSetting(supabaseAdmin, 'mcq_generation');
+    const improvementModel = await resolveAIModelSetting(supabaseAdmin, 'auto_improvement');
+    const estimatedTokens = estimateTokensForGeneration(body.quantity);
+    const estimatedCost = estimateModelCost(generationModel.model_name, estimatedTokens.inputTokens, estimatedTokens.outputTokens);
 
     const [trackRes, topicRes] = await Promise.all([
       supabaseAdmin
@@ -206,7 +217,7 @@ export async function POST(req: NextRequest) {
         content_type: 'mcq',
         quantity_requested: body.quantity,
         status: 'running',
-        model_used: QUESTION_GENERATOR_MODEL,
+        model_used: generationModel.model_name,
         prompt_version: QUESTION_PROMPT_VERSION,
       })
       .select('id')
@@ -266,6 +277,7 @@ export async function POST(req: NextRequest) {
         sampleStyleGuidance: blueprintContext.questionWritingGuidelines || null,
         intendedCognitiveLevel: blueprintContext.cognitiveLevelTarget,
         intendedDifficulty: blueprintContext.difficultyTarget,
+        model: generationModel.model_name,
         quantity,
         difficultyMix: requestedDifficultyMix,
         cognitiveLevelMix: body.cognitiveLevelMix,
@@ -371,7 +383,7 @@ export async function POST(req: NextRequest) {
               intendedDifficulty: blueprintContext.difficultyTarget,
             },
             integrityResult: integrity,
-          });
+          }, improvementModel.model_name);
 
           question = improved.question;
           integrity = improved.integrityResult;
@@ -507,8 +519,20 @@ export async function POST(req: NextRequest) {
         generated_count: quantityInserted,
         duplicate_count: quantityRejected,
         status: 'success',
+        model_used: generationModel.model_name,
+        estimated_cost: estimatedCost,
       });
     }
+
+    await logAIUsage(supabaseAdmin, {
+      actionType: 'mcq_generation',
+      modelName: generationModel.model_name,
+      inputTokens: estimatedTokens.inputTokens,
+      outputTokens: estimatedTokens.outputTokens,
+      relatedBatchId: batchId,
+      adminUserId: adminUser.id,
+      success: true,
+    });
 
     return NextResponse.json({
       batchId,
@@ -516,6 +540,8 @@ export async function POST(req: NextRequest) {
       quantityGenerated,
       quantityInserted,
       quantityRejected,
+      modelUsed: generationModel.model_name,
+      estimatedCost,
       insertedIds,
       integrityResults,
       rejected,

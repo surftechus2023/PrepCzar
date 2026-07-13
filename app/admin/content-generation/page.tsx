@@ -18,7 +18,15 @@ interface GenerationResult {
   quantityGenerated: number;
   quantityInserted: number;
   quantityRejected: number;
+  modelUsed?: string;
+  estimatedCost?: number;
   error?: string;
+}
+
+interface AISetting {
+  setting_key: string;
+  model_name: string;
+  estimated_cost_for_10: number;
 }
 
 export default function ContentGenerationPage() {
@@ -41,10 +49,12 @@ export default function ContentGenerationPage() {
   const [cognitiveLevelMix, setCognitiveLevelMix] = useState({ recall: 0, application: 50, analysis: 50 });
   const [status, setStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle');
   const [result, setResult] = useState<GenerationResult | null>(null);
+  const [aiSetting, setAiSetting] = useState<AISetting | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     loadOptions();
+    loadAISettings();
   }, []);
 
   useEffect(() => {
@@ -106,6 +116,14 @@ export default function ContentGenerationPage() {
       setSocialWorkBlueprintItems(data.socialWorkBlueprintItems || []);
       setSelectedSubtopic('');
       setSelectedBlueprintItem('');
+    }
+  }
+
+  async function loadAISettings() {
+    const response = await authenticatedFetch('/api/admin/ai-settings');
+    const data = await response.json();
+    if (response.ok) {
+      setAiSetting((data.settings || []).find((setting: AISetting) => setting.setting_key === 'mcq_generation') || null);
     }
   }
 
@@ -315,6 +333,18 @@ export default function ContentGenerationPage() {
                 </CardContent>
               </Card>
             </div>
+
+            {aiSetting && (
+              <div className="rounded-md border border-border bg-muted/20 p-3 text-sm">
+                <p className="font-medium">Estimated AI cost before generation</p>
+                <p className="text-muted-foreground">
+                  Requested: {quantity} · Model: {aiSetting.model_name} · Estimated cost range: $
+                  {Math.max(0.000001, (aiSetting.estimated_cost_for_10 * quantity) / 10).toFixed(6)}
+                  {' '}to ${Math.max(0.000001, ((aiSetting.estimated_cost_for_10 * quantity) / 10) * 1.5).toFixed(6)}
+                </p>
+                <p className="text-xs text-muted-foreground">Actual cost may differ based on prompt size, output length, and provider token accounting.</p>
+              </div>
+            )}
 
             <Button onClick={handleGenerate} disabled={status === 'running'} className="w-full">
               {status === 'running' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}

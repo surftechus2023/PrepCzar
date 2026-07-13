@@ -86,6 +86,7 @@ export async function generateVignettesFromBlueprint(input: {
   context: BlueprintContext;
   quantity: number;
   language: 'en' | 'es' | 'fr' | 'all';
+  model?: string;
 }) {
   const openai = getOpenAIClient();
   const prompt = `${formatGenerationBlueprintPrompt(input.context)}
@@ -128,9 +129,10 @@ Return valid JSON:
   ]
 }`;
 
+  const model = input.model || VIGNETTE_GENERATOR_MODEL;
   const completion = await openai.chat.completions.create({
-    model: VIGNETTE_GENERATOR_MODEL,
-    ...temperatureOption(VIGNETTE_GENERATOR_MODEL, 0.4),
+    model,
+    ...temperatureOption(model, 0.4),
     messages: [
       { role: 'system', content: 'You are a rigorous professional exam-prep case writer. Output only valid JSON.' },
       { role: 'user', content: prompt },

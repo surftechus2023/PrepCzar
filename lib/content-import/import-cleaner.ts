@@ -17,13 +17,13 @@ function deterministicClean(items: ParsedImportItem[]) {
   }));
 }
 
-async function aiCleanItem(item: ParsedImportItem, mode: ImportCleanupMode) {
+async function aiCleanItem(item: ParsedImportItem, mode: ImportCleanupMode, modelName = IMPORT_CLEANUP_MODEL) {
   if (!process.env.OPENAI_API_KEY) return item;
 
   const openai = getOpenAIClient();
   const completion = await openai.chat.completions.create({
-    model: IMPORT_CLEANUP_MODEL,
-    ...temperatureOption(IMPORT_CLEANUP_MODEL, 0.2),
+    model: modelName,
+    ...temperatureOption(modelName, 0.2),
     response_format: { type: 'json_object' },
     messages: [
       {
@@ -66,13 +66,13 @@ async function aiCleanItem(item: ParsedImportItem, mode: ImportCleanupMode) {
   }
 }
 
-export async function cleanImportedItems(items: ParsedImportItem[], mode: ImportCleanupMode) {
+export async function cleanImportedItems(items: ParsedImportItem[], mode: ImportCleanupMode, modelName = IMPORT_CLEANUP_MODEL) {
   const cleaned = deterministicClean(items);
   if (mode === 'parse_only' || mode === 'parse_structure') return cleaned;
 
   const improved: ParsedImportItem[] = [];
   for (const item of cleaned) {
-    improved.push(await aiCleanItem(item, mode));
+    improved.push(await aiCleanItem(item, mode, modelName));
   }
   return improved;
 }

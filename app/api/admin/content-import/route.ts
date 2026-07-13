@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { logAIUsage, resolveAIModelSetting } from '@/lib/ai/model-settings';
 import { checkAndUpdateQuestionIntegrity } from '@/lib/content-integrity/question-integrity-checker';
 import { cleanImportedItems } from '@/lib/content-import/import-cleaner';
 import { parseCsvContent } from '@/lib/content-import/parse-csv';
@@ -205,7 +206,11 @@ export async function POST(req: NextRequest) {
     const items = extension === 'csv'
       ? parseCsvContent(sourceText, contentType)
       : parseTextContent(sourceText, contentType);
-    const cleanedItems = await cleanImportedItems(items, cleanupMode);
+    const cleanupModel = await resolveAIModelSetting(getSupabaseAdmin(), 'import_cleanup');
+    const useAI = cleanupMode === 'structure_improve' || cleanupMode === 'structure_improve_review';
+    const cleanedItems = useAI && cleanupModel.enabled
+      ? await cleanImportedItems(items, cleanupMode, cleanupModel.model_name)
+      : await cleanImportedItems(items, cleanupMode);
 
     const { data: batch, error } = await (getSupabaseAdmin() as any)
       .from('content_import_batches')
@@ -227,6 +232,19 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) throw new Error(error.message);
+    if (useAI && cleanupModel.enabled) {
+      const inputTokens = Math.max(500, Math.ceil(sourceText.length / 4));
+      const outputTokens = Math.max(300, cleanedItems.length * 350);
+      await logAIUsage(getSupabaseAdmin(), {
+        actionType: 'import_cleanup',
+        modelName: cleanupModel.model_name,
+        inputTokens,
+        outputTokens,
+        relatedBatchId: batch.id,
+        adminUserId: adminUser.id,
+        success: true,
+      });
+    }
     return NextResponse.json({ batch, items: cleanedItems, warnings });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Import preview failed.' }, { status: 400 });

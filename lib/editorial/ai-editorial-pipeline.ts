@@ -227,7 +227,7 @@ ${instructions}`,
   );
 }
 
-export async function runEditorialReview(supabaseAdmin: SupabaseClient, questionId: string) {
+export async function runEditorialReview(supabaseAdmin: SupabaseClient, questionId: string, modelName = EDITORIAL_MODELS.blueprint) {
   const question = await fetchQuestion(supabaseAdmin, questionId);
   const context = await contextForQuestion(supabaseAdmin, question);
 
@@ -244,17 +244,17 @@ export async function runEditorialReview(supabaseAdmin: SupabaseClient, question
   }
 
   const [blueprint, difficulty, distractor, psychometric, bias, security] = await Promise.all([
-    runReviewer('Blueprint SME Reviewer', EDITORIAL_MODELS.blueprint, context, question, `Evaluate only exam track, major content area, competency section, applied knowledge statement, learning objective, topic/subtopic alignment.
+    runReviewer('Blueprint SME Reviewer', modelName, context, question, `Evaluate only exam track, major content area, competency section, applied knowledge statement, learning objective, topic/subtopic alignment.
 Return: blueprint_alignment_score, explanation, failure_reasons, rewrite_recommendations.`),
-    runReviewer('Difficulty and Cognitive Reviewer', EDITORIAL_MODELS.difficulty, context, question, `Evaluate only difficulty, cognitive level, application, reasoning, clinical judgment, prioritization, risk, ethics, and best-next-step thinking.
+    runReviewer('Difficulty and Cognitive Reviewer', modelName, context, question, `Evaluate only difficulty, cognitive level, application, reasoning, clinical judgment, prioritization, risk, ethics, and best-next-step thinking.
 Easy questions fail. Return: difficulty_quality_score, detected_cognitive_level, explanation, failure_reasons, rewrite_recommendations.`),
-    runReviewer('Distractor and Rationale Reviewer', EDITORIAL_MODELS.distractor, context, question, `Evaluate distractor plausibility, duplicate answers, obvious wrong answers, multiple correct answers, cueing, correct rationale quality, and wrong-answer rationale quality.
+    runReviewer('Distractor and Rationale Reviewer', modelName, context, question, `Evaluate distractor plausibility, duplicate answers, obvious wrong answers, multiple correct answers, cueing, correct rationale quality, and wrong-answer rationale quality.
 Return: distractor_score, rationale_score, explanation, failure_reasons, rewrite_recommendations.`),
-    runReviewer('Psychometrician Reviewer', EDITORIAL_MODELS.psychometric, context, question, `Evaluate construct validity, expected discrimination, ambiguity, candidate reasoning, cueing, estimated item performance, and whether it distinguishes competent from non-competent candidates.
+    runReviewer('Psychometrician Reviewer', modelName, context, question, `Evaluate construct validity, expected discrimination, ambiguity, candidate reasoning, cueing, estimated item performance, and whether it distinguishes competent from non-competent candidates.
 Return: psychometric_score, explanation, failure_reasons, rewrite_recommendations.`),
-    runReviewer('Bias and Fairness Reviewer', EDITORIAL_MODELS.bias, context, question, `Evaluate cultural, gender, age, disability, socioeconomic bias, unnecessary demographics, and fairness.
+    runReviewer('Bias and Fairness Reviewer', modelName, context, question, `Evaluate cultural, gender, age, disability, socioeconomic bias, unnecessary demographics, and fairness.
 Return: bias_score, bias_flags, failure_reasons, rewrite_recommendations.`),
-    runReviewer('Security and Originality Reviewer', EDITORIAL_MODELS.security, context, question, `Evaluate duplicate risk, copyright risk, similarity to existing bank or official-style sample items, and originality.
+    runReviewer('Security and Originality Reviewer', modelName, context, question, `Evaluate duplicate risk, copyright risk, similarity to existing bank or official-style sample items, and originality.
 Return: security_score, plagiarism_risk_score, similarity_notes, failure_reasons, rewrite_recommendations.`),
   ]);
 
@@ -311,7 +311,7 @@ Return: security_score, plagiarism_risk_score, similarity_notes, failure_reasons
   return { status, scores, integrityScore, failureReasons, rewriteRecommendations, question: updated };
 }
 
-export async function autoRewriteQuestion(supabaseAdmin: SupabaseClient, questionId: string, committeeChanges: string[] = []) {
+export async function autoRewriteQuestion(supabaseAdmin: SupabaseClient, questionId: string, committeeChanges: string[] = [], modelName = EDITORIAL_MODELS.rewrite) {
   const question = await fetchQuestion(supabaseAdmin, questionId);
   const context = await contextForQuestion(supabaseAdmin, question);
   if (context.missingMetadata.length) {
@@ -335,7 +335,7 @@ export async function autoRewriteQuestion(supabaseAdmin: SupabaseClient, questio
   };
 
   const rewritten = await callJsonModel(
-    EDITORIAL_MODELS.rewrite,
+    modelName,
     'You are the GPT rewrite engine. Do not review. Rewrite the question to directly address every failure reason. Output JSON only.',
     `${formatBlueprintContextForPrompt(context)}
 
@@ -377,7 +377,7 @@ Return one JSON object with question_en, option_a_en, option_b_en, option_c_en, 
       auto_improved: true,
       improvement_notes: [
         question.improvement_notes,
-        `Rewrite attempt ${attempts + 1} at ${new Date().toISOString()} using ${EDITORIAL_MODELS.rewrite}.`,
+        `Rewrite attempt ${attempts + 1} at ${new Date().toISOString()} using ${modelName}.`,
       ].filter(Boolean).join('\n\n'),
       reviewed: false,
       active: false,
@@ -398,14 +398,14 @@ Return one JSON object with question_en, option_a_en, option_b_en, option_c_en, 
     revised_question: rewritten,
     failure_reasons: reviewerContext.failure_reasons,
     improvement_notes: `Rewrite attempt ${attempts + 1}.`,
-    model_used: EDITORIAL_MODELS.rewrite,
+    model_used: modelName,
   });
   if (revisionError) throw new Error(revisionError.message);
 
   return { status: 'rewritten', question: updated, revisionNumber };
 }
 
-export async function runFinalReview(supabaseAdmin: SupabaseClient, questionId: string) {
+export async function runFinalReview(supabaseAdmin: SupabaseClient, questionId: string, modelName = EDITORIAL_MODELS.final) {
   const question = await fetchQuestion(supabaseAdmin, questionId);
   const context = await contextForQuestion(supabaseAdmin, question);
   if (context.missingMetadata.length) {
@@ -414,7 +414,7 @@ export async function runFinalReview(supabaseAdmin: SupabaseClient, questionId: 
   }
 
   const finalReview = await callJsonModel(
-    EDITORIAL_MODELS.final,
+    modelName,
     'You are an independent final GPT reviewer. You receive no prior scores. Output JSON only.',
     `${formatBlueprintContextForPrompt(context)}
 
@@ -474,7 +474,7 @@ Evaluate independently and output final_blueprint_score, final_difficulty_score,
   return { status, finalReview, question: updated };
 }
 
-export async function runCommitteeReview(supabaseAdmin: SupabaseClient, questionId: string) {
+export async function runCommitteeReview(supabaseAdmin: SupabaseClient, questionId: string, modelName = EDITORIAL_MODELS.committee) {
   const question = await fetchQuestion(supabaseAdmin, questionId);
   const context = await contextForQuestion(supabaseAdmin, question);
   if (context.missingMetadata.length) {
@@ -498,7 +498,7 @@ export async function runCommitteeReview(supabaseAdmin: SupabaseClient, question
   ];
 
   const reviews = await Promise.all(roles.map(({ role, instructions }) => callJsonModel(
-    EDITORIAL_MODELS.committee,
+    modelName,
     `${role}. You receive only BlueprintContext and final question. Output JSON only.`,
     `${formatBlueprintContextForPrompt(context)}
 
@@ -515,7 +515,7 @@ Output exactly: role, vote approve|revise|reject, score, reason, required_change
     reviews.map((review) => ({
       question_id: questionId,
       reviewer_role: review.role,
-      model_used: EDITORIAL_MODELS.committee,
+      model_used: modelName,
       vote: review.vote,
       score: normalizeScore(review.score),
       reason: review.reason,

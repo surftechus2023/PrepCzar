@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { logAIUsage, resolveAIModelSetting } from '@/lib/ai/model-settings';
 import { autoRewriteQuestion, runEditorialReview } from '@/lib/editorial/ai-editorial-pipeline';
 import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
 
@@ -23,10 +24,21 @@ export async function POST(req: NextRequest) {
     }
 
     const supabaseAdmin = getSupabaseAdmin();
-    const rewrite = await autoRewriteQuestion(supabaseAdmin, parsed.data.question_id, parsed.data.committee_changes || []);
+    const improvementModel = await resolveAIModelSetting(supabaseAdmin, 'auto_improvement');
+    const integrityModel = await resolveAIModelSetting(supabaseAdmin, 'integrity_review');
+    const rewrite = await autoRewriteQuestion(supabaseAdmin, parsed.data.question_id, parsed.data.committee_changes || [], improvementModel.model_name);
     const review = rewrite.status === 'rewritten'
-      ? await runEditorialReview(supabaseAdmin, parsed.data.question_id)
+      ? await runEditorialReview(supabaseAdmin, parsed.data.question_id, integrityModel.model_name)
       : null;
+    await logAIUsage(supabaseAdmin, {
+      actionType: 'auto_improvement',
+      modelName: improvementModel.model_name,
+      inputTokens: 2500,
+      outputTokens: 1000,
+      relatedRecordId: parsed.data.question_id,
+      adminUserId: adminUser.id,
+      success: rewrite.status === 'rewritten',
+    });
 
     return NextResponse.json({ ...rewrite, review });
   } catch (err: any) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { logAIUsage, resolveAIModelSetting } from '@/lib/ai/model-settings';
 import { runEditorialReview } from '@/lib/editorial/ai-editorial-pipeline';
 import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
 
@@ -21,7 +22,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid editorial review request', details: parsed.error.flatten() }, { status: 400 });
     }
 
-    const result = await runEditorialReview(getSupabaseAdmin(), parsed.data.question_id);
+    const supabaseAdmin = getSupabaseAdmin();
+    const model = await resolveAIModelSetting(supabaseAdmin, 'integrity_review');
+    const result = await runEditorialReview(supabaseAdmin, parsed.data.question_id, model.model_name);
+    await logAIUsage(supabaseAdmin, {
+      actionType: 'integrity_review',
+      modelName: model.model_name,
+      inputTokens: 4500,
+      outputTokens: 1800,
+      relatedRecordId: parsed.data.question_id,
+      adminUserId: adminUser.id,
+      success: true,
+    });
     return NextResponse.json(result);
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Editorial review failed.' }, { status: 500 });
