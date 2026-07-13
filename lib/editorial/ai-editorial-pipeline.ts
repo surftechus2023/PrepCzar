@@ -2,20 +2,22 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { buildBlueprintContext, formatBlueprintContextForPrompt, type BlueprintContext } from '@/lib/blueprint/blueprint-context-builder';
 import { checkAndUpdateQuestionIntegrity } from '@/lib/content-integrity/question-integrity-checker';
+import { INTEGRITY_THRESHOLDS } from '@/lib/content-integrity/integrity-gates';
 import { getOpenAIClient } from '@/lib/openai/client';
+import { resolveConfiguredModel } from '@/lib/openai/model-config';
 import { temperatureOption } from '@/lib/openai/request-options';
 import type { Question } from '@/types/database';
 
 export const EDITORIAL_MODELS = {
-  blueprint: process.env.CONTENT_BLUEPRINT_REVIEW_MODEL || 'gpt-5.5',
-  difficulty: process.env.CONTENT_DIFFICULTY_MODEL || 'gpt-5.5',
-  distractor: process.env.CONTENT_DISTRACTOR_MODEL || 'gpt-5.5',
-  psychometric: process.env.CONTENT_PSYCHOMETRIC_MODEL || 'gpt-5.5',
-  bias: process.env.CONTENT_BIAS_MODEL || 'gpt-5.5',
-  security: process.env.CONTENT_SECURITY_MODEL || 'gpt-5.5',
-  rewrite: process.env.CONTENT_REWRITE_MODEL || 'gpt-5.5',
-  final: process.env.CONTENT_FINAL_REVIEW_MODEL || 'gpt-5.5',
-  committee: process.env.CONTENT_COMMITTEE_MODEL || 'gpt-5.5',
+  blueprint: resolveConfiguredModel('CONTENT_BLUEPRINT_REVIEW_MODEL', 'gpt-4.1'),
+  difficulty: resolveConfiguredModel('CONTENT_DIFFICULTY_MODEL', 'gpt-4.1'),
+  distractor: resolveConfiguredModel('CONTENT_DISTRACTOR_MODEL', 'gpt-4.1'),
+  psychometric: resolveConfiguredModel('CONTENT_PSYCHOMETRIC_MODEL', 'gpt-4.1'),
+  bias: resolveConfiguredModel('CONTENT_BIAS_MODEL', 'gpt-4.1'),
+  security: resolveConfiguredModel('CONTENT_SECURITY_MODEL', 'gpt-4.1'),
+  rewrite: resolveConfiguredModel('CONTENT_REWRITE_MODEL', 'gpt-4.1'),
+  final: resolveConfiguredModel('CONTENT_FINAL_REVIEW_MODEL', 'gpt-4.1'),
+  committee: resolveConfiguredModel('CONTENT_COMMITTEE_MODEL', 'gpt-4.1'),
 };
 
 const scoreSchema: z.ZodType<number, z.ZodTypeDef, unknown> = z.preprocess(
@@ -269,14 +271,14 @@ Return: security_score, plagiarism_risk_score, similarity_notes, failure_reasons
   const integrityScore = integrityScoreFromScores(scores);
   const failureReasons = allFailureReasons({ blueprint, difficulty, distractor, psychometric, bias, security });
   const rewriteRecommendations = allRewriteRecommendations({ blueprint, difficulty, distractor, psychometric, bias, security });
-  const passed = scores.blueprint >= 90
-    && scores.difficulty >= 85
+  const passed = scores.blueprint >= INTEGRITY_THRESHOLDS.blueprintAlignment
+    && scores.difficulty >= INTEGRITY_THRESHOLDS.difficultyQuality
     && scores.distractor >= 85
     && scores.rationale >= 85
     && scores.psychometric >= 85
     && scores.bias >= 90
     && scores.security >= 90
-    && integrityScore >= 90;
+    && integrityScore >= INTEGRITY_THRESHOLDS.overallIntegrity;
 
   const attempts = question.improvement_attempts || 0;
   const status = passed ? 'passed' : attempts >= 2 ? 'needs_human_review' : 'needs_improvement';
@@ -432,13 +434,13 @@ Evaluate independently and output final_blueprint_score, final_difficulty_score,
     integrity: normalizeScore(finalReview.final_integrity_score),
   };
 
-  const passed = finalScores.blueprint >= 90
-    && finalScores.difficulty >= 85
+  const passed = finalScores.blueprint >= INTEGRITY_THRESHOLDS.blueprintAlignment
+    && finalScores.difficulty >= INTEGRITY_THRESHOLDS.difficultyQuality
     && finalScores.distractor >= 85
     && finalScores.psychometric >= 85
     && finalScores.bias >= 90
     && finalScores.security >= 90
-    && finalScores.integrity >= 90;
+    && finalScores.integrity >= INTEGRITY_THRESHOLDS.overallIntegrity;
   const attempts = question.improvement_attempts || 0;
   const status = passed ? 'passed' : attempts >= 2 ? 'needs_human_review' : 'needs_improvement';
 
@@ -562,9 +564,11 @@ export async function publishQuestion(supabaseAdmin: SupabaseClient, questionId:
 
   const canPublish = checked.result.integrity_status === 'passed'
     && question.committee_status === 'approved'
-    && checked.result.blueprint_alignment_score >= 90
-    && checked.result.difficulty_quality_score >= 85
-    && checked.result.integrity_score >= 90;
+    && checked.result.blueprint_alignment_score >= INTEGRITY_THRESHOLDS.blueprintAlignment
+    && checked.result.difficulty_quality_score >= INTEGRITY_THRESHOLDS.difficultyQuality
+    && checked.result.integrity_score >= INTEGRITY_THRESHOLDS.overallIntegrity
+    && question.difficulty !== 'easy'
+    && checked.result.plagiarism_risk_score <= INTEGRITY_THRESHOLDS.highDuplicateRisk;
 
   const override = Boolean(overrideReason?.trim());
   if (!canPublish && !override) {

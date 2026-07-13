@@ -13,7 +13,7 @@ Workflow:
 Publishing rule:
 
 - Students can see non-MCQ content only when both `reviewed` and `active` are true.
-- Students can see MCQs only when `reviewed=true`, `active=true`, `integrity_status='passed'`, `committee_status='approved'`, `blueprint_alignment_score >= 90`, `difficulty_quality_score >= 85`, and `integrity_score >= 90`.
+- Students can see MCQs only when `reviewed=true`, `active=true`, `integrity_status='passed'`, `committee_status='approved'`, `blueprint_alignment_score >= 90`, `difficulty_quality_score >= 80`, and `integrity_score >= 85`.
 - Admin overrides require a stored override reason, admin id, and timestamp.
 
 Audit trail:

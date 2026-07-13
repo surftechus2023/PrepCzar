@@ -1,7 +1,8 @@
 export { getOpenAIClient } from './client';
 import { getOpenAIClient } from './client';
+import { resolveConfiguredModel } from './model-config';
 
-const CONTENT_GENERATION_MODEL = process.env.CONTENT_GENERATION_MODEL || 'gpt-4.1-mini';
+const CONTENT_GENERATION_MODEL = resolveConfiguredModel('CONTENT_GENERATION_MODEL', 'gpt-4.1-mini');
 
 function parseGeneratedArray(content: string, keys: string[]) {
   const parsed = JSON.parse(content);

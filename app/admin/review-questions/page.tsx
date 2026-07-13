@@ -107,7 +107,7 @@ export default function ReviewQuestionsPage() {
     }
   }
 
-  async function publish(question: ReviewQuestion) {
+  async function publish(question: ReviewQuestion, forceOverride = false) {
     const missingBlueprintMetadata = missingBlueprintFields(question);
     if (missingBlueprintMetadata.length > 0) {
       toast({
@@ -121,11 +121,13 @@ export default function ReviewQuestionsPage() {
     const canPublish = question.integrity_status === 'passed'
       && question.committee_status === 'approved'
       && (question.blueprint_alignment_score ?? 0) >= 90
-      && (question.difficulty_quality_score ?? 0) >= 85
-      && (question.integrity_score ?? 0) >= 90;
+      && (question.difficulty_quality_score ?? 0) >= 80
+      && (question.integrity_score ?? 0) >= 85
+      && question.difficulty !== 'easy'
+      && (question.plagiarism_risk_score ?? 0) <= 70;
     let overrideReason: string | undefined;
 
-    if (!canPublish) {
+    if (!canPublish || forceOverride) {
       const reason = window.prompt('Publication gate has not passed. Enter an admin override reason to publish anyway:');
       if (!reason?.trim()) {
         toast({ title: 'Publish canceled', description: 'Override reason is required when the publication gate has not passed.' });
@@ -594,8 +596,10 @@ export default function ReviewQuestionsPage() {
                           <li>Blueprint metadata: {missingBlueprintMetadata.length ? 'missing' : 'complete'}</li>
                           <li>Integrity status: {question.integrity_status}</li>
                           <li>Blueprint score ≥ 90: {(question.blueprint_alignment_score ?? 0) >= 90 ? 'yes' : 'no'}</li>
-                          <li>Difficulty score ≥ 85: {(question.difficulty_quality_score ?? 0) >= 85 ? 'yes' : 'no'}</li>
-                          <li>Integrity score ≥ 90: {(question.integrity_score ?? 0) >= 90 ? 'yes' : 'no'}</li>
+                          <li>Difficulty score ≥ 80: {(question.difficulty_quality_score ?? 0) >= 80 ? 'yes' : 'no'}</li>
+                          <li>Integrity score ≥ 85: {(question.integrity_score ?? 0) >= 85 ? 'yes' : 'no'}</li>
+                          <li>No easy questions: {question.difficulty !== 'easy' ? 'yes' : 'no'}</li>
+                          <li>Duplicate/plagiarism risk ≤ 70: {(question.plagiarism_risk_score ?? 0) <= 70 ? 'yes' : 'no'}</li>
                           <li>Committee approved: {question.committee_status === 'approved' ? 'yes' : 'no'}</li>
                         </ul>
                       </div>
@@ -617,6 +621,10 @@ export default function ReviewQuestionsPage() {
                         <Button size="sm" onClick={() => publish(question)}>
                           <Send className="w-4 h-4 mr-2" />
                           Publish
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => publish(question, true)}>
+                          <ShieldCheck className="w-4 h-4 mr-2" />
+                          Admin Override
                         </Button>
                         <Button size="sm" variant="outline" disabled={checkingId === question.id} onClick={() => rerunIntegrityCheck(question)}>
                           {checkingId === question.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}

@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { getOpenAIClient } from '@/lib/openai/client';
+import { resolveConfiguredModel } from '@/lib/openai/model-config';
 import { temperatureOption } from '@/lib/openai/request-options';
 import { formatGenerationBlueprintPrompt } from './blueprint-context';
 import type { BlueprintContext } from '@/lib/blueprint/blueprint-context-builder';
 
-export const FLASHCARD_GENERATOR_MODEL = process.env.CONTENT_GENERATION_MODEL || 'gpt-4.1-mini';
+export const FLASHCARD_GENERATOR_MODEL = resolveConfiguredModel('CONTENT_GENERATION_MODEL', 'gpt-4.1-mini');
 export const FLASHCARD_PROMPT_VERSION = 'flashcard-blueprint-v1';
 
 export const generatedFlashcardSchema = z.object({

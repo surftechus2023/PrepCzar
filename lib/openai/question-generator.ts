@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { formatExamTrackRulesForPrompt } from '@/lib/content-generation/exam-track-rules';
 import { getOpenAIClient } from './client';
+import { resolveConfiguredModel } from './model-config';
 import { temperatureOption } from './request-options';
 
-export const QUESTION_GENERATOR_MODEL = process.env.CONTENT_GENERATION_MODEL || 'gpt-4.1-mini';
+export const QUESTION_GENERATOR_MODEL = resolveConfiguredModel('CONTENT_GENERATION_MODEL', 'gpt-4.1-mini');
 export const QUESTION_PROMPT_VERSION = 'mcq-quality-v2-strict-integrity';
 
 const percentMixSchema = z.record(z.string(), z.number().int().min(0).max(100));

@@ -91,8 +91,8 @@ Legacy deterministic integrity passing requires:
 The GPT editorial publish gate is stricter:
 
 - `blueprint_alignment_score >= 90`
-- `difficulty_quality_score >= 85`
-- `integrity_score >= 90`
+- `difficulty_quality_score >= 80`
+- `integrity_score >= 85`
 - `committee_status='approved'`
 
 Statuses:
@@ -150,16 +150,16 @@ Legacy `Psychopathology & Diagnosis` Social Work questions are backfilled to the
 Defaults:
 
 - `CONTENT_GENERATION_MODEL=gpt-4.1-mini`
-- `CONTENT_INTEGRITY_MODEL=gpt-5.5`
-- `CONTENT_IMPROVEMENT_MODEL=gpt-5.5`
-- `CONTENT_BLUEPRINT_REVIEW_MODEL=gpt-5.5`
-- `CONTENT_DIFFICULTY_MODEL=gpt-5.5`
-- `CONTENT_DISTRACTOR_MODEL=gpt-5.5`
-- `CONTENT_PSYCHOMETRIC_MODEL=gpt-5.5`
-- `CONTENT_BIAS_MODEL=gpt-5.5`
-- `CONTENT_SECURITY_MODEL=gpt-5.5`
-- `CONTENT_REWRITE_MODEL=gpt-5.5`
-- `CONTENT_FINAL_REVIEW_MODEL=gpt-5.5`
-- `CONTENT_COMMITTEE_MODEL=gpt-5.5`
+- `CONTENT_INTEGRITY_MODEL=gpt-4.1`
+- `CONTENT_IMPROVEMENT_MODEL=gpt-4.1`
+- `CONTENT_BLUEPRINT_REVIEW_MODEL=gpt-4.1`
+- `CONTENT_DIFFICULTY_MODEL=gpt-4.1`
+- `CONTENT_DISTRACTOR_MODEL=gpt-4.1`
+- `CONTENT_PSYCHOMETRIC_MODEL=gpt-4.1`
+- `CONTENT_BIAS_MODEL=gpt-4.1`
+- `CONTENT_SECURITY_MODEL=gpt-4.1`
+- `CONTENT_REWRITE_MODEL=gpt-4.1`
+- `CONTENT_FINAL_REVIEW_MODEL=gpt-4.1`
+- `CONTENT_COMMITTEE_MODEL=gpt-4.1`
 
 See `docs/AI_EDITORIAL_PIPELINE.md` for the full staged workflow.

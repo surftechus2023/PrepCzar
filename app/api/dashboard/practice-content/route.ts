@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
 
     if (contentType === 'mcq') {
       contentQuery = contentQuery.or(
-        'and(integrity_status.eq.passed,committee_status.eq.approved,blueprint_alignment_score.gte.90,difficulty_quality_score.gte.85,integrity_score.gte.90),and(admin_override.eq.true,admin_override_reason.not.is.null,admin_override_by.not.is.null,admin_override_at.not.is.null)'
+        'and(integrity_status.eq.passed,committee_status.eq.approved,blueprint_alignment_score.gte.90,difficulty_quality_score.gte.80,integrity_score.gte.85,difficulty.neq.easy,plagiarism_risk_score.lte.70),and(admin_override.eq.true,admin_override_reason.not.is.null,admin_override_by.not.is.null,admin_override_at.not.is.null)'
       );
     }
 

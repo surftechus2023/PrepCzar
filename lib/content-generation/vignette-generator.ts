@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { getOpenAIClient } from '@/lib/openai/client';
+import { resolveConfiguredModel } from '@/lib/openai/model-config';
 import { temperatureOption } from '@/lib/openai/request-options';
 import { formatGenerationBlueprintPrompt } from './blueprint-context';
 import type { BlueprintContext } from '@/lib/blueprint/blueprint-context-builder';
 
-export const VIGNETTE_GENERATOR_MODEL = process.env.CONTENT_GENERATION_MODEL || 'gpt-4.1-mini';
+export const VIGNETTE_GENERATOR_MODEL = resolveConfiguredModel('CONTENT_GENERATION_MODEL', 'gpt-4.1-mini');
 export const VIGNETTE_PROMPT_VERSION = 'vignette-blueprint-v1';
 
 export const generatedVignetteSchema = z.object({

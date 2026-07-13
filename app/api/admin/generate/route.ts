@@ -2,8 +2,8 @@ import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { checkAndUpdateQuestionIntegrity } from '@/lib/content-integrity/question-integrity-checker';
+import { INTEGRITY_THRESHOLDS } from '@/lib/content-integrity/integrity-gates';
 import { autoImproveStoredQuestion } from '@/lib/content-integrity/question-improver';
-import { getExamTrackRules } from '@/lib/content-generation/exam-track-rules';
 import {
   estimatedOpenAICost,
   loadRequiredBlueprintContext,
@@ -189,7 +189,6 @@ export async function POST(req: NextRequest) {
     });
 
     examName = blueprintContext.examTrack;
-    const examTrackRules = getExamTrackRules(examName);
     const { data: batch, error: batchError } = await supabaseAdmin
       .from('ai_generation_batches')
       .insert({
@@ -308,9 +307,9 @@ export async function POST(req: NextRequest) {
             if (
               checked.result.integrity_status !== 'needs_metadata'
               && (
-                checked.result.blueprint_alignment_score < 85
-                || checked.result.difficulty_quality_score < examTrackRules.minimumDifficultyQualityScore
-                || checked.result.integrity_score < 85
+                checked.result.blueprint_alignment_score < INTEGRITY_THRESHOLDS.blueprintAlignment
+                || checked.result.difficulty_quality_score < INTEGRITY_THRESHOLDS.difficultyQuality
+                || checked.result.integrity_score < INTEGRITY_THRESHOLDS.overallIntegrity
               )
             ) {
               await autoImproveStoredQuestion(supabaseAdmin, question.id);

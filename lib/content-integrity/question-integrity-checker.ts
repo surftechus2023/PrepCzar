@@ -1,10 +1,12 @@
 import { createHash } from 'crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getExamTrackRules, isRecallOnlyStem } from '@/lib/content-generation/exam-track-rules';
+import { INTEGRITY_THRESHOLDS, hasCriticalBiasFlags } from '@/lib/content-integrity/integrity-gates';
+import { resolveConfiguredModel } from '@/lib/openai/model-config';
 import type { Question } from '@/types/database';
 
 export type IntegrityStatus = 'pending' | 'passed' | 'needs_review' | 'needs_improvement' | 'needs_human_review' | 'needs_metadata' | 'failed';
-export const CONTENT_INTEGRITY_MODEL = process.env.CONTENT_INTEGRITY_MODEL || 'gpt-5.5';
+export const CONTENT_INTEGRITY_MODEL = resolveConfiguredModel('CONTENT_INTEGRITY_MODEL', 'gpt-4.1');
 type CognitiveLevel =
   | 'recall'
   | 'comprehension'
@@ -499,7 +501,7 @@ function evaluateDifficultyQuality(question: Question, context: QuestionContext,
   else if (delta === -1) score = 68;
   else score = 50;
 
-  if (intended === 'medium' && predictedDifficulty === 'hard') score = 85;
+  if (intended === 'medium' && predictedDifficulty === 'hard') score = 90;
   if (detected === 'clinical judgment' && intended === 'medium' && predictedDifficulty === 'hard') score = 90;
   if (isTooLowForTrack(question, context, detected)) score -= 35;
   if ((intended === 'medium' || intended === 'hard') && detected === 'recall') score -= 30;
@@ -534,10 +536,10 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
     notes.push(`Missing blueprint metadata - update topic/subtopic before generating or reviewing: ${missingMetadata.join(', ')}.`);
   } else if (!blueprintAlignment.hasReliableBlueprintMetadata) {
     notes.push('Blueprint metadata was missing, so alignment could not be reliably scored.');
-  } else if (blueprintAlignmentScore < 85) {
+  } else if (blueprintAlignmentScore < INTEGRITY_THRESHOLDS.blueprintAlignment) {
     notes.push(context.socialWorkBlueprintItem
-      ? 'Question is below the 85+ blueprint alignment target for the selected applied knowledge statement and should be improved before human review.'
-      : 'Question is below the 85+ blueprint alignment target and should be improved before human review.');
+      ? 'Question is below the 90+ blueprint alignment target for the selected applied knowledge statement and should be improved before human review.'
+      : 'Question is below the 90+ blueprint alignment target and should be improved before human review.');
   } else if (blueprintAlignmentScore < 90) {
     notes.push('Question is aligned but could be made more specific to the supplied blueprint metadata.');
   }
@@ -547,14 +549,14 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
   if (isTooLowForTrack(question, context, cognitiveLevelDetected)) notes.push('Question may be too low-level for this exam track.');
   if (rules.preferScenarioBased && isRecallOnlyStem(question.question_en)) notes.push(`${rules.label} items should not use simple recall phrasing; rewrite as a scenario-based application, analysis, or clinical judgment item.`);
   if (predictedDifficulty !== question.difficulty) notes.push(`Predicted difficulty (${predictedDifficulty}) differs from intended difficulty (${question.difficulty}).`);
-  if (plagiarismRiskScore > 70) notes.push('Question has high similarity to existing content and needs originality review.');
+  if (plagiarismRiskScore > INTEGRITY_THRESHOLDS.highDuplicateRisk) notes.push('Question has high similarity to existing content and needs originality review.');
   if (biasFlags.length) notes.push('Bias/fairness flags require human review.');
 
   const itemWritingPoints = Math.max(0, 25 - qualityFlags.length * 5);
   const distractorPoints = Math.max(0, 20 - distractorFlags.length * 5);
   const blueprintPoints = Math.round((blueprintAlignmentScore / 100) * 20);
   const cognitivePoints = cognitiveLevelMatches(question, cognitiveLevelDetected) && !isTooLowForTrack(question, context, cognitiveLevelDetected) ? 10 : 4;
-  const difficultyPoints = predictedDifficulty === question.difficulty ? 10 : 5;
+  const difficultyPoints = predictedDifficulty === question.difficulty || (question.difficulty === 'medium' && predictedDifficulty === 'hard') ? 10 : 5;
   const biasPoints = biasFlags.length ? 4 : 10;
   const originalityPoints = plagiarismRiskScore > 70 ? 0 : plagiarismRiskScore >= 45 ? 2 : 5;
   let integrityScore = Math.max(0, Math.min(100, itemWritingPoints + distractorPoints + blueprintPoints + cognitivePoints + difficultyPoints + biasPoints + originalityPoints));
@@ -564,11 +566,16 @@ export function evaluateQuestionIntegrity(question: Question, context: QuestionC
   let status: IntegrityStatus = 'passed';
 
   if (missingMetadata.length || !blueprintAlignment.hasReliableBlueprintMetadata) status = 'needs_metadata';
-  else if (plagiarismRiskScore > 70) status = 'failed';
+  else if (plagiarismRiskScore > INTEGRITY_THRESHOLDS.highDuplicateRisk) status = 'failed';
   else if (blueprintAlignmentScore < 70) status = 'failed';
   else if (question.difficulty === 'easy') status = 'needs_improvement';
-  else if (blueprintAlignmentScore < 85 || difficultyQualityScore < 80 || integrityScore < 85) status = 'needs_improvement';
-  if (biasFlags.length && status === 'passed') status = 'needs_review';
+  else if (
+    blueprintAlignmentScore < INTEGRITY_THRESHOLDS.blueprintAlignment
+    || difficultyQualityScore < INTEGRITY_THRESHOLDS.difficultyQuality
+    || integrityScore < INTEGRITY_THRESHOLDS.overallIntegrity
+  ) status = 'needs_improvement';
+  if (hasCriticalBiasFlags(biasFlags)) status = status === 'passed' ? 'needs_review' : status;
+  else if (biasFlags.length && status === 'passed') status = 'needs_review';
 
   return {
     integrity_status: status,
@@ -657,8 +664,12 @@ export async function checkAndUpdateQuestionIntegrity(supabaseAdmin: SupabaseCli
       quality_flags: result.quality_flags,
       bias_flags: result.bias_flags,
       distractor_flags: result.distractor_flags,
-      blueprint_alignment_score: result.blueprint_alignment_score,
-      difficulty_quality_score: result.difficulty_quality_score,
+      blueprint_alignment_score: result.integrity_status === 'needs_metadata'
+        ? typedQuestion.blueprint_alignment_score
+        : result.blueprint_alignment_score,
+      difficulty_quality_score: result.integrity_status === 'needs_metadata'
+        ? typedQuestion.difficulty_quality_score
+        : result.difficulty_quality_score,
       cognitive_level_detected: result.cognitive_level_detected,
       predicted_difficulty: result.predicted_difficulty,
       plagiarism_risk_score: result.plagiarism_risk_score,

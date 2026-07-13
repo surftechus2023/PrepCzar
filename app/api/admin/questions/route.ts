@@ -82,7 +82,7 @@ export async function PATCH(req: NextRequest) {
     const supabaseAdmin = getSupabaseAdmin();
     const { data: current, error: currentError } = await supabaseAdmin
       .from('questions')
-      .select('reviewed, active, integrity_status, integrity_override, admin_override, blueprint_alignment_score, difficulty_quality_score, integrity_score, committee_status')
+      .select('reviewed, active, integrity_status, integrity_override, admin_override, blueprint_alignment_score, difficulty_quality_score, integrity_score, committee_status, difficulty, plagiarism_risk_score')
       .eq('id', id)
       .single();
 
@@ -112,12 +112,16 @@ export async function PATCH(req: NextRequest) {
     const nextBlueprintScore = updateValues.blueprint_alignment_score ?? current.blueprint_alignment_score;
     const nextDifficultyScore = updateValues.difficulty_quality_score ?? current.difficulty_quality_score;
     const nextIntegrityScore = updateValues.integrity_score ?? current.integrity_score;
+    const nextDifficulty = updateValues.difficulty ?? current.difficulty;
+    const nextPlagiarismRiskScore = updateValues.plagiarism_risk_score ?? current.plagiarism_risk_score;
     const overridePublish = nextIntegrityOverride === true || nextAdminOverride === true;
     const passedPublicationGate = nextIntegrityStatus === 'passed'
       && nextCommitteeStatus === 'approved'
       && nextBlueprintScore >= 90
-      && nextDifficultyScore >= 85
-      && nextIntegrityScore >= 90;
+      && nextDifficultyScore >= 80
+      && nextIntegrityScore >= 85
+      && nextDifficulty !== 'easy'
+      && nextPlagiarismRiskScore <= 70;
 
     if (
       nextActive === true

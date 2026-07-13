@@ -11,6 +11,7 @@ import {
   validateQuestionQuality,
 } from '@/lib/content-quality/question-quality';
 import { checkAndUpdateQuestionIntegrity } from '@/lib/content-integrity/question-integrity-checker';
+import { INTEGRITY_THRESHOLDS } from '@/lib/content-integrity/integrity-gates';
 import {
   evaluateGeneratedQuestionIntegrity,
   improveGeneratedQuestionOnce,
@@ -342,9 +343,9 @@ export async function POST(req: NextRequest) {
           integrity.integrity_status !== 'needs_metadata'
           && (
             (examTrackRules.preferScenarioBased && isRecallOnlyStem(question.question))
-            || integrity.blueprint_alignment_score < 85
-            || integrity.difficulty_quality_score < examTrackRules.minimumDifficultyQualityScore
-            || integrity.integrity_score < 85
+            || integrity.blueprint_alignment_score < INTEGRITY_THRESHOLDS.blueprintAlignment
+            || integrity.difficulty_quality_score < INTEGRITY_THRESHOLDS.difficultyQuality
+            || integrity.integrity_score < INTEGRITY_THRESHOLDS.overallIntegrity
           )
         ) {
           const improved = await improveGeneratedQuestionOnce({

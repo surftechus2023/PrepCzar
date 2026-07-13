@@ -49,6 +49,9 @@ Checkout currently uses `exam_tracks.monthly_price` to create Stripe subscriptio
 - `CONTENT_REWRITE_MODEL`
 - `CONTENT_FINAL_REVIEW_MODEL`
 - `CONTENT_COMMITTEE_MODEL`
+- `OPENAI_ALLOWED_MODELS`
+
+Model variables are validated against `OPENAI_ALLOWED_MODELS`. If a configured model is not allowlisted, the server falls back to the configured safe default rather than calling an unsupported model name.
 
 ## Safety Rules
 

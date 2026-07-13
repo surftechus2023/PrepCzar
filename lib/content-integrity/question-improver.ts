@@ -1,13 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { formatExamTrackRulesForPrompt } from '@/lib/content-generation/exam-track-rules';
+import { INTEGRITY_THRESHOLDS } from '@/lib/content-integrity/integrity-gates';
 import { evaluateQuestionIntegrity, type QuestionContext, type QuestionIntegrityResult } from '@/lib/content-integrity/question-integrity-checker';
 import { getOpenAIClient } from '@/lib/openai/client';
+import { resolveConfiguredModel } from '@/lib/openai/model-config';
 import { temperatureOption } from '@/lib/openai/request-options';
 import { generatedQuestionSchema, type GeneratedQuestion } from '@/lib/openai/question-generator';
 import type { Question } from '@/types/database';
 
 const MAX_IMPROVEMENT_ATTEMPTS = 2;
-export const CONTENT_IMPROVEMENT_MODEL = process.env.CONTENT_IMPROVEMENT_MODEL || 'gpt-5.5';
+export const CONTENT_IMPROVEMENT_MODEL = resolveConfiguredModel('CONTENT_IMPROVEMENT_MODEL', 'gpt-4.1');
 
 interface ImprovementMetadata {
   examTrackId: string;
@@ -240,9 +242,9 @@ Exam-track-specific rewrite rules:
 ${formatExamTrackRulesForPrompt(metadata.examTrackName)}
 
 Current scores:
-- blueprint_alignment_score: ${integrityResult.blueprint_alignment_score} (target 85+)
-- difficulty_quality_score: ${integrityResult.difficulty_quality_score} (target 80+)
-- integrity_score: ${integrityResult.integrity_score} (target 85+)
+- blueprint_alignment_score: ${integrityResult.blueprint_alignment_score} (target ${INTEGRITY_THRESHOLDS.blueprintAlignment}+)
+- difficulty_quality_score: ${integrityResult.difficulty_quality_score} (target ${INTEGRITY_THRESHOLDS.difficultyQuality}+)
+- integrity_score: ${integrityResult.integrity_score} (target ${INTEGRITY_THRESHOLDS.overallIntegrity}+)
 - integrity_status: ${integrityResult.integrity_status}
 
 Problems to fix:
@@ -255,7 +257,7 @@ Rewrite requirements:
 - Meaningfully rewrite weak items; do not make only small wording edits.
 - Keep the same selected exam track, topic, subtopic, learning objective, intended cognitive level, and intended difficulty.
 - Judge and improve blueprint alignment only against the provided exam blueprint metadata, not general model knowledge.
-- If blueprint_alignment_score is below 85, rewrite the item to more directly test the provided applied knowledge statement, learning objective, and blueprint reference text.
+- If blueprint_alignment_score is below ${INTEGRITY_THRESHOLDS.blueprintAlignment}, rewrite the item to more directly test the provided applied knowledge statement, learning objective, and blueprint reference text.
 - Make the clinical/professional scenario clearly match the provided blueprint text.
 - Rewrite easy, recall-style, or generic Social Work items into medium or hard scenario-based items.
 - If this is an LCSW/Clinical item, rewrite it as a clinical case vignette testing differential diagnosis, assessment priority, risk assessment, ethical decision-making, best next step, treatment planning, or clinical intervention choice.
@@ -451,6 +453,32 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
     improved.improvementNotes,
   ].filter(Boolean).join('\n\n');
 
+  const { data: latestRevision } = await supabaseAdmin
+    .from('question_revisions')
+    .select('revision_number')
+    .eq('question_id', questionId)
+    .order('revision_number', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  await supabaseAdmin
+    .from('question_revisions')
+    .insert({
+      question_id: questionId,
+      revision_number: ((latestRevision as any)?.revision_number || 0) + 1,
+      revision_type: 'auto_improvement',
+      previous_question: storedQuestionToGenerated(question, metadata),
+      revised_question: improved.question,
+      failure_reasons: [
+        ...currentIntegrity.quality_flags,
+        ...currentIntegrity.distractor_flags,
+        ...currentIntegrity.bias_flags,
+        currentIntegrity.integrity_review_notes,
+      ].filter(Boolean),
+      improvement_notes: improved.improvementNotes,
+      model_used: CONTENT_IMPROVEMENT_MODEL,
+    });
+
   await supabaseAdmin
     .from('questions')
     .update({
@@ -483,6 +511,7 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
       improvement_attempts: nextAttempts,
       auto_improved: true,
       improvement_notes: improvementNotes,
+      integrity_status: 'pending',
       reviewed: false,
       active: false,
     })
@@ -493,9 +522,9 @@ export async function autoImproveStoredQuestion(supabaseAdmin: SupabaseClient, q
   if (
     nextAttempts >= MAX_IMPROVEMENT_ATTEMPTS
     && (
-      checked.result.blueprint_alignment_score < 85
-      || checked.result.difficulty_quality_score < 80
-      || checked.result.integrity_score < 85
+      checked.result.blueprint_alignment_score < INTEGRITY_THRESHOLDS.blueprintAlignment
+      || checked.result.difficulty_quality_score < INTEGRITY_THRESHOLDS.difficultyQuality
+      || checked.result.integrity_score < INTEGRITY_THRESHOLDS.overallIntegrity
     )
   ) {
     const marked = await supabaseAdmin
