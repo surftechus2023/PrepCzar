@@ -20,11 +20,23 @@ interface SessionWithTrack extends PracticeSession {
   exam?: ExamTrack;
 }
 
+interface ProgressDiagnostics {
+  averageScore: number;
+  recentAverage: number;
+  previousAverage: number;
+  improvementTrend: number;
+  completedSessions: number;
+  incompleteSessions: number;
+  weakBlueprintDomains: Array<{ label: string; count: number }>;
+}
+
 export default function DashboardPage() {
   const { profile } = useAuth();
   const [trackAccess, setTrackAccess] = useState<ActiveTrackAccess[]>([]);
   const [recentSessions, setRecentSessions] = useState<SessionWithTrack[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
+  const [diagnostics, setDiagnostics] = useState<ProgressDiagnostics | null>(null);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
@@ -43,6 +55,8 @@ export default function DashboardPage() {
     setTrackAccess(accessRes.ok ? accessJson.access || [] : []);
     setRecentSessions(progressRes.ok ? (progressJson.sessions as SessionWithTrack[]) || [] : []);
     setScores(progressRes.ok ? progressJson.scores || [] : []);
+    setDiagnostics(progressRes.ok ? progressJson.diagnostics || null : null);
+    setSubscriptionStatus(progressRes.ok ? (progressJson.subscriptions || []).map((subscription: any) => `${subscription.exam_track?.name || 'Exam'}: ${subscription.status}`) : []);
     setLoading(false);
   }, [profile]);
 
@@ -62,6 +76,8 @@ export default function DashboardPage() {
     : 0;
 
   const incompleteSessions = recentSessions.filter(s => !s.completed);
+  const recommendedAccess = trackAccess[0];
+  const recommendedMode = diagnostics?.weakBlueprintDomains?.length ? 'mcq' : 'flashcards';
   const practiceRouteByMode: Record<PracticeSession['mode'], string> = {
     mcq: 'mcq',
     flashcard: 'flashcards',
@@ -173,6 +189,9 @@ export default function DashboardPage() {
                             ${access.exam_track.monthly_price}/mo
                           </span>
                         </div>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Progress: {diagnostics?.averageScore || 0}% average across completed sessions. Scores are practice diagnostics, not official exam predictions.
+                        </p>
                       </div>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2">
@@ -210,6 +229,54 @@ export default function DashboardPage() {
 
         {/* Recent sessions + scores */}
         <div className="space-y-6">
+          {recommendedAccess && (
+            <div>
+              <h2 className="text-lg font-semibold text-foreground mb-4">Recommended Next Practice</h2>
+              <Card className="border-primary/30 bg-primary/5">
+                <CardContent className="p-4">
+                  <p className="text-sm font-medium text-foreground">
+                    Continue with {recommendedMode === 'mcq' ? 'MCQ practice' : 'flashcards'} for {recommendedAccess.exam_track.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Recommendation is based on recent sessions and weak blueprint areas.
+                  </p>
+                  <Button size="sm" className="mt-3" asChild>
+                    <Link href={`/dashboard/practice/${recommendedMode === 'mcq' ? 'mcq' : 'flashcards'}?exam=${recommendedAccess.exam_track_id}`}>
+                      Start Recommended Practice
+                    </Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {diagnostics?.weakBlueprintDomains?.length ? (
+            <div>
+              <h2 className="text-lg font-semibold text-foreground mb-4">Weak Blueprint Domains</h2>
+              <Card className="border-border">
+                <CardContent className="p-4 space-y-2">
+                  {diagnostics.weakBlueprintDomains.map((domain) => (
+                    <div key={domain.label} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="truncate text-muted-foreground">{domain.label}</span>
+                      <Badge variant="secondary">{domain.count}</Badge>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          ) : null}
+
+          {subscriptionStatus.length > 0 && (
+            <div>
+              <h2 className="text-lg font-semibold text-foreground mb-4">Subscription Status</h2>
+              <Card className="border-border">
+                <CardContent className="p-4 space-y-2">
+                  {subscriptionStatus.map((item) => <p key={item} className="text-sm text-muted-foreground">{item}</p>)}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
           {/* Recent sessions */}
           <div>
             <h2 className="text-lg font-semibold text-foreground mb-4">Recent Sessions</h2>

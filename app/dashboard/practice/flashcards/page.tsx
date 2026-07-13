@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
-import { hasActiveTrackAccess } from '@/lib/access';
 import { authenticatedFetch } from '@/lib/api';
 import { useVoice } from '@/hooks/useVoice';
 import type { Flashcard, Exam, PracticeSession } from '@/types/database';
@@ -49,7 +48,7 @@ function FlashcardsContent() {
   const [lang, setLang] = useState<'en' | 'es' | 'fr'>('en');
   const [session, setSession] = useState<PracticeSession | null>(null);
 
-  const { voiceEnabled, setVoiceEnabled, speak, supported } = useVoice();
+  const { voiceEnabled, speak } = useVoice();
 
   useEffect(() => {
     if (profile?.preferred_language) {
@@ -78,16 +77,11 @@ function FlashcardsContent() {
       return;
     }
 
-    const allowed = await hasActiveTrackAccess(profile.id, targetExamId);
-    if (!allowed) {
-      router.push('/dashboard/subscriptions');
-      return;
-    }
-
     const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=flashcards&exam=${targetExamId}`);
     const contentJson = await contentRes.json();
 
     if (!contentRes.ok) {
+      if (contentRes.status === 403) router.push('/dashboard/subscriptions');
       setLoadError(contentJson.error || 'Could not load flashcards.');
       setLoading(false);
       return;
@@ -100,12 +94,17 @@ function FlashcardsContent() {
     setLoading(false);
 
     if (contentJson.content?.length > 0) {
-      setFlashcards([...contentJson.content].sort(() => Math.random() - 0.5));
+      const orderedCards = [...contentJson.content].sort(() => Math.random() - 0.5);
+      setFlashcards(orderedCards);
 
       try {
         const sessionRes = await authenticatedFetch('/api/dashboard/practice-session', {
           method: 'POST',
-          body: JSON.stringify({ examTrackId: targetExamId, mode: 'flashcard' }),
+          body: JSON.stringify({
+            examTrackId: targetExamId,
+            mode: 'flashcard',
+            contentItemIds: orderedCards.map((card: Flashcard) => card.id),
+          }),
         });
         const sessionJson = await sessionRes.json();
         if (sessionRes.ok) setSession(sessionJson.session);
@@ -157,6 +156,17 @@ function FlashcardsContent() {
     setKnown(newKnown);
     setUnknown(newUnknown);
     setFlipped(false);
+
+    if (session && exam?.id) {
+      await authenticatedFetch('/api/dashboard/flashcard-review', {
+        method: 'POST',
+        body: JSON.stringify({
+          examTrackId: exam.id,
+          flashcardId: currentCard.id,
+          classification: knows ? 'known' : 'learning',
+        }),
+      });
+    }
 
     if (currentIdx < flashcards.length - 1) {
       setTimeout(() => setCurrentIdx(currentIdx + 1), 200);

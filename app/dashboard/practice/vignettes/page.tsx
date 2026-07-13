@@ -12,7 +12,6 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
-import { hasActiveTrackAccess } from '@/lib/access';
 import { authenticatedFetch } from '@/lib/api';
 import type { CaseVignette, Exam, PracticeSession } from '@/types/database';
 
@@ -75,16 +74,11 @@ function VignettesContent() {
       return;
     }
 
-    const allowed = await hasActiveTrackAccess(profile.id, targetExamId);
-    if (!allowed) {
-      router.push('/dashboard/subscriptions');
-      return;
-    }
-
     const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=vignettes&exam=${targetExamId}`);
     const contentJson = await contentRes.json();
 
     if (!contentRes.ok) {
+      if (contentRes.status === 403) router.push('/dashboard/subscriptions');
       setLoadError(contentJson.error || 'Could not load case vignettes.');
       setLoading(false);
       return;
@@ -97,12 +91,17 @@ function VignettesContent() {
     setLoading(false);
 
     if (contentJson.content?.length > 0) {
-      setVignettes([...contentJson.content].sort(() => Math.random() - 0.5));
+      const orderedVignettes = [...contentJson.content].sort(() => Math.random() - 0.5);
+      setVignettes(orderedVignettes);
 
       try {
         const sessionRes = await authenticatedFetch('/api/dashboard/practice-session', {
           method: 'POST',
-          body: JSON.stringify({ examTrackId: targetExamId, mode: 'vignette' }),
+          body: JSON.stringify({
+            examTrackId: targetExamId,
+            mode: 'vignette',
+            contentItemIds: orderedVignettes.map((vignette: CaseVignette) => vignette.id),
+          }),
         });
         const sessionJson = await sessionRes.json();
         if (sessionRes.ok) setSession(sessionJson.session);
@@ -124,8 +123,19 @@ function VignettesContent() {
     return (card[key] as string) || (card[fallback] as string) || '';
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!answer.trim()) return;
+    if (session && current && exam?.id) {
+      await authenticatedFetch('/api/dashboard/vignette-response', {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId: session.id,
+          examTrackId: exam.id,
+          caseVignetteId: current.id,
+          responseText: answer,
+        }),
+      });
+    }
     setSubmitted(true);
   }
 
@@ -281,7 +291,7 @@ function VignettesContent() {
               <Card className="border-emerald-300 bg-emerald-50 dark:bg-emerald-950 dark:border-emerald-800">
                 <CardContent className="p-5">
                   <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider mb-3">
-                    AI Coaching Feedback
+                    Stored Coaching Feedback
                   </p>
                   <p className="text-emerald-900 dark:text-emerald-200 text-sm leading-relaxed">
                     {get('coaching_feedback', current)}

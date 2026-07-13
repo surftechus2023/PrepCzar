@@ -1,18 +1,16 @@
 'use client';
 
-import { Suspense, useState, useEffect, useCallback } from 'react';
+import { Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
   ChevronRight, ChevronLeft, CheckCircle, XCircle, Volume2, Mic,
-  MicOff, VolumeX, Clock, BarChart3, RefreshCw, Trophy, ArrowLeft
+  MicOff, VolumeX, RefreshCw, Trophy, ArrowLeft, Bookmark
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
-import { hasActiveTrackAccess } from '@/lib/access';
 import { authenticatedFetch } from '@/lib/api';
 import { useVoice, parseVoiceAnswer } from '@/hooks/useVoice';
 import type { Question, Exam, PracticeSession } from '@/types/database';
@@ -58,8 +56,10 @@ function MCQPracticeContent() {
   const [loadError, setLoadError] = useState('');
   const [completed, setCompleted] = useState(false);
   const [lang, setLang] = useState<'en' | 'es' | 'fr'>('en');
+  const [bookmarked, setBookmarked] = useState<Record<string, boolean>>({});
+  const questionStartedAt = useRef(Date.now());
 
-  const { voiceEnabled, setVoiceEnabled, speaking, listening, supported, speak, stopSpeaking, startListening, stopListening } = useVoice();
+  const { voiceEnabled, setVoiceEnabled, speaking, listening, supported, recognitionSupported, speak, stopSpeaking, startListening, stopListening } = useVoice();
 
   useEffect(() => {
     if (voiceMode) {
@@ -80,34 +80,27 @@ function MCQPracticeContent() {
     }
 
     let targetTrackId = examId;
+    let resumedSession: PracticeSession | null = null;
 
-    // Resume existing session
+    // Resume existing session through the server-side access guard.
     if (sessionId) {
-      const { data: sessData } = await supabase
-        .from('practice_sessions')
-        .select('*')
-        .eq('id', sessionId)
-        .eq('user_id', profile.id)
-        .maybeSingle();
-      const sess = sessData as PracticeSession | null;
+      const sessionRes = await authenticatedFetch(`/api/dashboard/practice-session?sessionId=${sessionId}`);
+      const sessionJson = await sessionRes.json();
+      const sess = sessionRes.ok ? sessionJson.session as PracticeSession | null : null;
       if (sess) {
+        resumedSession = sess;
         setSession(sess);
         targetTrackId = sess.exam_track_id || sess.exam_id;
         if (sess.completed) setCompleted(true);
+        if (typeof (sess as any).current_index === 'number') setCurrentIdx((sess as any).current_index);
 
-        // Load existing responses
-        const { data: responseData } = await supabase
-          .from('responses')
-          .select('*')
-          .eq('session_id', sessionId);
-
-        if (responseData) {
+        if (sessionJson.responses) {
           const map: AnswerMap = {};
-          (responseData as any[]).forEach((r) => { map[r.question_id] = r.selected_answer; });
+          (sessionJson.responses as any[]).forEach((r) => { map[r.question_id] = r.selected_answer; });
           setAnswers(map);
         }
       } else {
-        setLoadError('Practice session not found.');
+        setLoadError(sessionJson.error || 'Practice session not found.');
         setLoading(false);
         return;
       }
@@ -130,16 +123,11 @@ function MCQPracticeContent() {
 
     setActiveTrackId(targetTrackId);
 
-    const allowed = await hasActiveTrackAccess(profile.id, targetTrackId);
-    if (!allowed) {
-      router.push('/dashboard/subscriptions');
-      return;
-    }
-
     const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=mcq&exam=${targetTrackId}`);
     const contentJson = await contentRes.json();
 
     if (!contentRes.ok) {
+      if (contentRes.status === 403) router.push('/dashboard/subscriptions');
       setLoadError(contentJson.error || 'Could not load practice questions.');
       setLoading(false);
       return;
@@ -150,20 +138,24 @@ function MCQPracticeContent() {
     }
 
     if (contentJson.content?.length > 0) {
-      const shuffled = [...contentJson.content].sort(() => Math.random() - 0.5);
+      const existingIds = (resumedSession as any)?.content_item_ids || [];
+      const byId = new Map((contentJson.content as Question[]).map((question) => [question.id, question]));
+      const ordered = Array.isArray(existingIds) && existingIds.length
+        ? existingIds.map((id: string) => byId.get(id)).filter(Boolean) as Question[]
+        : [...contentJson.content].sort(() => Math.random() - 0.5);
+      const shuffled = ordered.length ? ordered : [...contentJson.content].sort(() => Math.random() - 0.5);
       setQuestions(shuffled);
+
+      if (!sessionId && profile) {
+        try {
+          await createPracticeSession(targetTrackId, shuffled.map((question) => question.id));
+        } catch (err) {
+          console.error('Could not create MCQ session:', err);
+        }
+      }
     }
 
     setLoading(false);
-
-    // Create new session if needed
-    if (!sessionId && profile) {
-      try {
-        await createPracticeSession(targetTrackId);
-      } catch (err) {
-        console.error('Could not create MCQ session:', err);
-      }
-    }
   }, [examId, profile, router, sessionId, voiceMode]);
 
   useEffect(() => {
@@ -176,15 +168,19 @@ function MCQPracticeContent() {
   const currentAnswer = currentQuestion ? answers[currentQuestion.id] : undefined;
   const isAnswered = !!currentAnswer;
 
+  useEffect(() => {
+    questionStartedAt.current = Date.now();
+  }, [currentIdx]);
+
   function getCorrectOption(q: Question): 'a' | 'b' | 'c' | 'd' {
     const option = String(q.correct_option || '').toLowerCase();
     return (['a', 'b', 'c', 'd'].includes(option) ? option : 'a') as 'a' | 'b' | 'c' | 'd';
   }
 
-  async function createPracticeSession(trackId: string) {
+  async function createPracticeSession(trackId: string, contentItemIds: string[] = []) {
     const res = await authenticatedFetch('/api/dashboard/practice-session', {
       method: 'POST',
-      body: JSON.stringify({ examTrackId: trackId, mode: 'mcq' }),
+      body: JSON.stringify({ examTrackId: trackId, mode: 'mcq', contentItemIds }),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || 'Could not create practice session');
@@ -211,6 +207,33 @@ function MCQPracticeContent() {
     return localized || q.correct_rationale_en || 'Review the correct option and compare it with the wording of the question.';
   }
 
+  function getQuestionDomain(q: Question) {
+    return (q as any).topic?.title || (q as any).source_topic || 'Unmapped blueprint domain';
+  }
+
+  function getQuestionCompetency(q: Question) {
+    return (q as any).subtopic?.title || (q as any).subtopic_record?.title || (q as any).competency_title || null;
+  }
+
+  async function toggleBookmark() {
+    if (!currentQuestion || !activeTrackId) return;
+    const nextBookmarked = !bookmarked[currentQuestion.id];
+    setBookmarked({ ...bookmarked, [currentQuestion.id]: nextBookmarked });
+
+    const res = await authenticatedFetch('/api/dashboard/bookmarks', {
+      method: 'POST',
+      body: JSON.stringify({
+        examTrackId: activeTrackId,
+        contentType: 'mcq',
+        contentItemId: currentQuestion.id,
+        bookmarked: nextBookmarked,
+      }),
+    });
+    if (!res.ok) {
+      setBookmarked({ ...bookmarked, [currentQuestion.id]: !nextBookmarked });
+    }
+  }
+
   async function handleAnswer(option: 'a' | 'b' | 'c' | 'd') {
     if (isAnswered || !currentQuestion) return;
 
@@ -230,6 +253,12 @@ function MCQPracticeContent() {
             questionId: currentQuestion.id,
             selectedAnswer: option,
             isCorrect,
+            currentIndex: currentIdx,
+            timeSpentMs: Date.now() - questionStartedAt.current,
+            domainTitle: getQuestionDomain(currentQuestion),
+            competencyTitle: getQuestionCompetency(currentQuestion),
+            cognitiveLevel: (currentQuestion as any).cognitive_level || (currentQuestion as any).intended_cognitive_level || null,
+            difficulty: currentQuestion.difficulty || null,
           }),
         });
       }
@@ -250,6 +279,18 @@ function MCQPracticeContent() {
     setShowRationale(false);
     if (currentIdx < questions.length - 1) {
       setCurrentIdx(currentIdx + 1);
+      if (session) {
+        await authenticatedFetch('/api/dashboard/practice-session', {
+          method: 'PUT',
+          body: JSON.stringify({
+            sessionId: session.id,
+            questionId: questions[currentIdx].id,
+            selectedAnswer: answers[questions[currentIdx].id],
+            isCorrect: answers[questions[currentIdx].id] === getCorrectOption(questions[currentIdx]),
+            currentIndex: currentIdx + 1,
+          }),
+        });
+      }
     } else {
       await finishSession();
     }
@@ -265,6 +306,13 @@ function MCQPracticeContent() {
       .filter(q => answers[q.id] !== getCorrectOption(q) && q.topic_id)
       .map(q => q.topic_id)
       .filter((topicId, index, all) => all.indexOf(topicId) === index);
+    const weakDomains = questions
+      .filter(q => answers[q.id] !== getCorrectOption(q))
+      .reduce<Record<string, number>>((acc, question) => {
+        const label = getQuestionDomain(question);
+        acc[label] = (acc[label] || 0) + 1;
+        return acc;
+      }, {});
 
     const activeSession = session || (activeTrackId ? await createPracticeSession(activeTrackId) : null);
     if (!activeSession) {
@@ -278,6 +326,13 @@ function MCQPracticeContent() {
         sessionId: activeSession.id,
         scorePercent,
         weakTopics,
+        currentIndex: questions.length,
+        metadata: {
+          weakDomains,
+          answered: total,
+          correct,
+          disclaimer: 'Practice performance is diagnostic and does not predict official exam results with certainty.',
+        },
       }),
     });
 
@@ -289,7 +344,7 @@ function MCQPracticeContent() {
   }
 
   function handleVoiceListen() {
-    if (!currentQuestion || isAnswered) return;
+    if (!currentQuestion || isAnswered || !recognitionSupported) return;
     startListening((transcript) => {
       const answer = parseVoiceAnswer(transcript);
       if (answer) handleAnswer(answer);
@@ -355,6 +410,13 @@ function MCQPracticeContent() {
     const total = questions.filter(q => q.id in answers).length;
     const correct = questions.filter(q => answers[q.id] === getCorrectOption(q)).length;
     const score = total > 0 ? Math.round((correct / total) * 100) : 0;
+    const weakDomains = questions
+      .filter(q => answers[q.id] !== getCorrectOption(q))
+      .reduce<Record<string, number>>((acc, question) => {
+        const label = getQuestionDomain(question);
+        acc[label] = (acc[label] || 0) + 1;
+        return acc;
+      }, {});
 
     return (
       <div className="p-6 max-w-2xl mx-auto">
@@ -381,6 +443,35 @@ function MCQPracticeContent() {
           </div>
 
           <Progress value={score} className="h-3 mb-8" />
+
+          {Object.keys(weakDomains).length > 0 && (
+            <div className="text-left bg-card border border-border rounded-xl p-4 mb-6">
+              <h3 className="font-semibold text-foreground mb-3">Weak Domain Report</h3>
+              <div className="space-y-2">
+                {Object.entries(weakDomains).map(([domain, count]) => (
+                  <div key={domain} className="flex justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground">{domain}</span>
+                    <Badge variant="secondary">{count} missed</Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="text-left bg-card border border-border rounded-xl p-4 mb-8">
+            <h3 className="font-semibold text-foreground mb-3">Answer Review</h3>
+            <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+              {questions.filter(q => q.id in answers).map((question, index) => (
+                <div key={question.id} className="border-b border-border last:border-b-0 pb-3 last:pb-0">
+                  <p className="text-sm font-medium text-foreground">Q{index + 1}. {getQuestionText(question)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Your answer: {answers[question.id]?.toUpperCase()} · Correct: {getCorrectOption(question).toUpperCase()}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">{getRationale(question)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
 
           <div className="flex gap-3 justify-center">
             <Button asChild variant="outline">
@@ -418,6 +509,11 @@ function MCQPracticeContent() {
             <p className="text-xs text-muted-foreground">
               {voiceEnabled ? 'Voice Practice Mode' : 'MCQ Practice'}
             </p>
+            {voiceEnabled && (
+              <p className="text-[11px] text-muted-foreground">
+                Voice mode is for accessibility and is not safe for active driving.
+              </p>
+            )}
           </div>
         </div>
 
@@ -468,11 +564,16 @@ function MCQPracticeContent() {
               <div className="flex items-center gap-2">
                 <Badge variant="secondary" className="capitalize">{currentQuestion.difficulty}</Badge>
               </div>
-              {voiceEnabled && (
-                <Button variant="ghost" size="sm" onClick={speakQuestion} disabled={speaking}>
-                  <Volume2 className={`w-4 h-4 ${speaking ? 'text-primary animate-pulse-slow' : ''}`} />
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={toggleBookmark} aria-label="Bookmark question">
+                  <Bookmark className={`w-4 h-4 ${bookmarked[currentQuestion.id] ? 'fill-primary text-primary' : ''}`} />
                 </Button>
-              )}
+                {voiceEnabled && (
+                  <Button variant="ghost" size="sm" onClick={speakQuestion} disabled={speaking}>
+                    <Volume2 className={`w-4 h-4 ${speaking ? 'text-primary animate-pulse-slow' : ''}`} />
+                  </Button>
+                )}
+              </div>
             </div>
 
             <p className="text-foreground font-medium leading-relaxed mb-6 text-lg">
@@ -551,6 +652,14 @@ function MCQPracticeContent() {
         </Card>
       )}
 
+      {voiceEnabled && !recognitionSupported && (
+        <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 mb-4">
+          <CardContent className="p-4 text-sm text-amber-800 dark:text-amber-200">
+            Speech recognition is unavailable in this browser. Question reading still works; use the manual answer buttons.
+          </CardContent>
+        </Card>
+      )}
+
       {/* Navigation */}
       <div className="flex items-center justify-between">
         <Button
@@ -563,7 +672,7 @@ function MCQPracticeContent() {
         </Button>
 
         <div className="flex gap-2">
-          {voiceEnabled && supported && !isAnswered && (
+          {voiceEnabled && recognitionSupported && !isAnswered && (
             <Button
               variant="outline"
               onClick={listening ? stopListening : handleVoiceListen}

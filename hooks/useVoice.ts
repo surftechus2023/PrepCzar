@@ -7,6 +7,8 @@ export function useVoice() {
   const [speaking, setSpeaking] = useState(false);
   const [listening, setListening] = useState(false);
   const [supported, setSupported] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [recognitionSupported, setRecognitionSupported] = useState(false);
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
@@ -14,7 +16,9 @@ export function useVoice() {
     const hasSpeechRecognition =
       typeof window !== 'undefined' &&
       ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
-    setSupported(hasSpeechSynth && hasSpeechRecognition);
+    setSpeechSupported(hasSpeechSynth);
+    setRecognitionSupported(hasSpeechRecognition);
+    setSupported(hasSpeechSynth || hasSpeechRecognition);
   }, []);
 
   const speak = useCallback((text: string, lang = 'en-US') => {
@@ -73,6 +77,8 @@ export function useVoice() {
     speaking,
     listening,
     supported,
+    speechSupported,
+    recognitionSupported,
     speak,
     stopSpeaking,
     startListening,
