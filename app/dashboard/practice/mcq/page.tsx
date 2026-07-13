@@ -12,7 +12,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
 import { authenticatedFetch } from '@/lib/api';
-import { useVoice, parseVoiceAnswer } from '@/hooks/useVoice';
+import { useVoice } from '@/hooks/useVoice';
+import { matchVoiceAnswer, type VoiceOption } from '@/lib/voice-answer';
 import type { Question, Exam, PracticeSession } from '@/types/database';
 import Link from 'next/link';
 
@@ -57,9 +58,26 @@ function MCQPracticeContent() {
   const [completed, setCompleted] = useState(false);
   const [lang, setLang] = useState<'en' | 'es' | 'fr'>('en');
   const [bookmarked, setBookmarked] = useState<Record<string, boolean>>({});
+  const [voiceSuggestion, setVoiceSuggestion] = useState<{ transcript: string; option?: VoiceOption } | null>(null);
   const questionStartedAt = useRef(Date.now());
 
-  const { voiceEnabled, setVoiceEnabled, speaking, listening, supported, recognitionSupported, speak, stopSpeaking, startListening, stopListening } = useVoice();
+  const {
+    voiceEnabled,
+    setVoiceEnabled,
+    speaking,
+    listening,
+    supported,
+    recognitionSupported,
+    status: voiceStatus,
+    voiceMessage,
+    voiceError,
+    transcript: voiceTranscript,
+    speak,
+    speakThenListen,
+    stopSpeaking,
+    startListening,
+    stopListening,
+  } = useVoice();
 
   useEffect(() => {
     if (voiceMode) {
@@ -236,6 +254,8 @@ function MCQPracticeContent() {
 
   async function handleAnswer(option: 'a' | 'b' | 'c' | 'd') {
     if (isAnswered || !currentQuestion) return;
+    stopListening();
+    setVoiceSuggestion(null);
 
     const correctOption = getCorrectOption(currentQuestion);
     const isCorrect = option === correctOption;
@@ -276,6 +296,8 @@ function MCQPracticeContent() {
 
   async function handleNext() {
     stopSpeaking();
+    stopListening();
+    setVoiceSuggestion(null);
     setShowRationale(false);
     if (currentIdx < questions.length - 1) {
       setCurrentIdx(currentIdx + 1);
@@ -344,21 +366,54 @@ function MCQPracticeContent() {
   }
 
   function handleVoiceListen() {
-    if (!currentQuestion || isAnswered || !recognitionSupported) return;
-    startListening((transcript) => {
-      const answer = parseVoiceAnswer(transcript);
-      if (answer) handleAnswer(answer);
+    if (!currentQuestion || isAnswered) return;
+    startListening(handleVoiceResult, { lang: VOICE_LANG_MAP[lang] });
+  }
+
+  function handleVoiceResult(heardTranscript: string) {
+    if (!currentQuestion || isAnswered) return;
+    const optionTexts = {
+      a: getOptionText(currentQuestion, 'a'),
+      b: getOptionText(currentQuestion, 'b'),
+      c: getOptionText(currentQuestion, 'c'),
+      d: getOptionText(currentQuestion, 'd'),
+    };
+    const match = matchVoiceAnswer(heardTranscript, optionTexts);
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('[voice] match result', match);
+    }
+
+    if (match.option && !match.ambiguous) {
+      handleAnswer(match.option);
+      return;
+    }
+
+    setVoiceSuggestion({
+      transcript: match.transcript || heardTranscript,
+      option: match.suggestedOption,
     });
   }
 
-  function speakQuestion() {
+  function getQuestionSpeechText() {
     if (!currentQuestion) return;
-    const text = `Question ${currentIdx + 1}. ${getQuestionText(currentQuestion)}.
+    return `Question ${currentIdx + 1}. ${getQuestionText(currentQuestion)}.
       Option A: ${getOptionText(currentQuestion, 'a')}.
       Option B: ${getOptionText(currentQuestion, 'b')}.
       Option C: ${getOptionText(currentQuestion, 'c')}.
       Option D: ${getOptionText(currentQuestion, 'd')}.`;
+  }
+
+  function speakQuestion() {
+    const text = getQuestionSpeechText();
+    if (!text) return;
     speak(text, VOICE_LANG_MAP[lang]);
+  }
+
+  function readQuestionThenListen() {
+    const text = getQuestionSpeechText();
+    if (!text || !currentQuestion || isAnswered) return;
+    setVoiceSuggestion(null);
+    speakThenListen(text, handleVoiceResult, { lang: VOICE_LANG_MAP[lang], delayMs: 500 });
   }
 
   if (loading) {
@@ -655,7 +710,80 @@ function MCQPracticeContent() {
       {voiceEnabled && !recognitionSupported && (
         <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 mb-4">
           <CardContent className="p-4 text-sm text-amber-800 dark:text-amber-200">
-            Speech recognition is unavailable in this browser. Question reading still works; use the manual answer buttons.
+            Voice recognition is not supported in this browser. Use Chrome or Edge, or answer manually.
+          </CardContent>
+        </Card>
+      )}
+
+      {voiceEnabled && currentQuestion && !isAnswered && (
+        <Card className="border-primary/20 bg-card mb-4">
+          <CardContent className="p-4 space-y-3">
+            <div aria-live="polite" role={voiceStatus === 'error' ? 'alert' : 'status'} className="text-sm">
+              <p className="font-medium text-foreground">
+                {voiceStatus === 'error' ? voiceError || voiceMessage : voiceMessage}
+              </p>
+              {voiceTranscript && (
+                <p className="text-muted-foreground mt-1">I heard: {voiceTranscript}</p>
+              )}
+              {voiceSuggestion && (
+                <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:bg-amber-950 dark:text-amber-100 dark:border-amber-800">
+                  <p>
+                    I heard “{voiceSuggestion.transcript}”.
+                    {voiceSuggestion.option
+                      ? ` Did you mean option ${voiceSuggestion.option.toUpperCase()}?`
+                      : ' I could not match that to one clear option.'}
+                  </p>
+                  {voiceSuggestion.option && (
+                    <Button
+                      size="sm"
+                      className="mt-2"
+                      onClick={() => handleAnswer(voiceSuggestion.option as 'a' | 'b' | 'c' | 'd')}
+                    >
+                      Use option {voiceSuggestion.option.toUpperCase()}
+                    </Button>
+                  )}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">
+                Manual fallback is always available: select A, B, C, or D above.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <Button
+                variant="outline"
+                onClick={readQuestionThenListen}
+                disabled={speaking || listening || !recognitionSupported}
+              >
+                <Volume2 className="w-4 h-4 mr-1.5" />
+                Read + Listen
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleVoiceListen}
+                disabled={speaking || listening || !recognitionSupported}
+              >
+                <Mic className="w-4 h-4 mr-1.5" />
+                Start Listening
+              </Button>
+              <Button
+                variant="outline"
+                onClick={stopListening}
+                disabled={!listening}
+              >
+                <MicOff className="w-4 h-4 mr-1.5" />
+                Stop Listening
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setVoiceSuggestion(null);
+                  handleVoiceListen();
+                }}
+                disabled={speaking || listening || !recognitionSupported}
+              >
+                Try Again
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -675,11 +803,11 @@ function MCQPracticeContent() {
           {voiceEnabled && recognitionSupported && !isAnswered && (
             <Button
               variant="outline"
-              onClick={listening ? stopListening : handleVoiceListen}
+              onClick={listening ? stopListening : readQuestionThenListen}
               className={listening ? 'text-primary border-primary' : ''}
             >
               {listening ? <MicOff className="w-4 h-4 mr-1.5" /> : <Mic className="w-4 h-4 mr-1.5" />}
-              {listening ? 'Listening...' : 'Voice Answer'}
+              {listening ? 'Listening...' : 'Read + Listen'}
             </Button>
           )}
 
