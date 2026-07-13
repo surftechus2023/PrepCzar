@@ -104,6 +104,52 @@ function normalizeItem(item: any): ParsedImportItem {
   };
 }
 
+async function loadExistingDuplicateHashes(
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
+  table: 'questions' | 'flashcards' | 'case_vignettes',
+  hashes: string[]
+): Promise<Set<string>> {
+  const uniqueHashes = Array.from(new Set(hashes.filter(Boolean)));
+  if (!uniqueHashes.length) return new Set<string>();
+
+  const { data, error } = await (supabaseAdmin as any)
+    .from(table)
+    .select('duplicate_hash')
+    .in('duplicate_hash', uniqueHashes);
+
+  if (error) throw new Error(error.message);
+  const existingHashes = (data || [])
+    .map((row: any) => row.duplicate_hash)
+    .filter((hash: unknown): hash is string => typeof hash === 'string' && hash.length > 0);
+  return new Set<string>(existingHashes);
+}
+
+function rejectDuplicateRows<T extends { duplicate_hash?: string | null }>(
+  rows: T[],
+  existingHashes: Set<string>,
+  label: string
+) {
+  const seen = new Set(existingHashes);
+  const accepted: T[] = [];
+  const rejectedReasons: string[] = [];
+
+  rows.forEach((row, index) => {
+    const hash = row.duplicate_hash;
+    if (!hash) {
+      accepted.push(row);
+      return;
+    }
+    if (seen.has(hash)) {
+      rejectedReasons.push(`${label} ${index + 1} skipped: duplicate content already exists or appears twice in this import.`);
+      return;
+    }
+    seen.add(hash);
+    accepted.push(row);
+  });
+
+  return { accepted, rejectedReasons };
+}
+
 export async function GET(req: NextRequest) {
   try {
     const adminUser = await requireAdmin(req);
@@ -235,6 +281,7 @@ export async function PUT(req: NextRequest) {
     };
 
     let insertedIds: string[] = [];
+    let rejectedReasons: string[] = [];
     if (body.contentType === 'mcq') {
       const rows = selected.map((item) => ({
         ...common,
@@ -275,9 +322,14 @@ export async function PUT(req: NextRequest) {
         integrity_status: 'pending',
         original_import_text: item.originalText,
       }));
-      const { data, error } = await (supabaseAdmin as any).from('questions').insert(rows).select('id');
-      if (error) throw new Error(error.message);
-      insertedIds = (data || []).map((row: any) => row.id);
+      const existingHashes = await loadExistingDuplicateHashes(supabaseAdmin, 'questions', rows.map((row) => row.duplicate_hash));
+      const filtered = rejectDuplicateRows(rows, existingHashes, 'MCQ');
+      rejectedReasons = filtered.rejectedReasons;
+      if (filtered.accepted.length) {
+        const { data, error } = await (supabaseAdmin as any).from('questions').insert(filtered.accepted).select('id');
+        if (error) throw new Error(error.message);
+        insertedIds = (data || []).map((row: any) => row.id);
+      }
       if (body.runIntegrity) {
         for (const id of insertedIds) await checkAndUpdateQuestionIntegrity(supabaseAdmin, id);
       }
@@ -298,9 +350,14 @@ export async function PUT(req: NextRequest) {
         duplicate_hash: duplicateHash(body.examTrackId, 'flashcards', item.fields.front || ''),
         original_import_text: item.originalText,
       }));
-      const { data, error } = await (supabaseAdmin as any).from('flashcards').insert(rows).select('id');
-      if (error) throw new Error(error.message);
-      insertedIds = (data || []).map((row: any) => row.id);
+      const existingHashes = await loadExistingDuplicateHashes(supabaseAdmin, 'flashcards', rows.map((row) => row.duplicate_hash));
+      const filtered = rejectDuplicateRows(rows, existingHashes, 'Flashcard');
+      rejectedReasons = filtered.rejectedReasons;
+      if (filtered.accepted.length) {
+        const { data, error } = await (supabaseAdmin as any).from('flashcards').insert(filtered.accepted).select('id');
+        if (error) throw new Error(error.message);
+        insertedIds = (data || []).map((row: any) => row.id);
+      }
     } else {
       const rows = selected.map((item) => ({
         ...common,
@@ -326,9 +383,14 @@ export async function PUT(req: NextRequest) {
         duplicate_hash: duplicateHash(body.examTrackId, 'vignettes', item.fields.case || ''),
         original_import_text: item.originalText,
       }));
-      const { data, error } = await (supabaseAdmin as any).from('case_vignettes').insert(rows).select('id');
-      if (error) throw new Error(error.message);
-      insertedIds = (data || []).map((row: any) => row.id);
+      const existingHashes = await loadExistingDuplicateHashes(supabaseAdmin, 'case_vignettes', rows.map((row) => row.duplicate_hash));
+      const filtered = rejectDuplicateRows(rows, existingHashes, 'Case vignette');
+      rejectedReasons = filtered.rejectedReasons;
+      if (filtered.accepted.length) {
+        const { data, error } = await (supabaseAdmin as any).from('case_vignettes').insert(filtered.accepted).select('id');
+        if (error) throw new Error(error.message);
+        insertedIds = (data || []).map((row: any) => row.id);
+      }
     }
 
     await (supabaseAdmin as any)
@@ -337,11 +399,18 @@ export async function PUT(req: NextRequest) {
         quantity_inserted: insertedIds.length,
         quantity_rejected: selected.length - insertedIds.length,
         status: 'completed',
+        errors: rejectedReasons,
         completed_at: new Date().toISOString(),
       })
       .eq('id', batchId);
 
-    return NextResponse.json({ batchId, insertedIds, inserted: insertedIds.length });
+    return NextResponse.json({
+      batchId,
+      insertedIds,
+      inserted: insertedIds.length,
+      rejected: selected.length - insertedIds.length,
+      rejectedReasons,
+    });
   } catch (err: any) {
     if (batchId) {
       await (getSupabaseAdmin() as any)

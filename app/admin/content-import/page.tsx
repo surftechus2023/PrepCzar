@@ -239,7 +239,10 @@ export default function AdminContentImportPage() {
       toast({ title: 'Import failed', description: data.error, variant: 'destructive' });
       return;
     }
-    toast({ title: 'Import complete', description: `${data.inserted} item(s) saved as inactive drafts.` });
+    toast({
+      title: 'Import complete',
+      description: `${data.inserted} item(s) saved as inactive drafts. ${data.rejected || 0} duplicate/invalid item(s) skipped.`,
+    });
     setPreviewItems([]);
     setBatchId(null);
   }
