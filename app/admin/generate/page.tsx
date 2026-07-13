@@ -43,6 +43,23 @@ interface BatchHistoryItem {
   topic?: { title: string | null } | null;
 }
 
+function normalizeBlueprintLabel(value: string | null | undefined) {
+  return (value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function labelsOverlap(left: string | null | undefined, right: string | null | undefined) {
+  const normalizedLeft = normalizeBlueprintLabel(left);
+  const normalizedRight = normalizeBlueprintLabel(right);
+  return Boolean(
+    normalizedLeft &&
+    normalizedRight &&
+    (normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft))
+  );
+}
+
 export default function AdminGeneratePage() {
   const [categories, setCategories] = useState<ExamCategory[]>([]);
   const [tracks, setTracks] = useState<ExamTrack[]>([]);
@@ -180,21 +197,38 @@ export default function AdminGeneratePage() {
   const selectedTrackObj = tracks.find((track) => track.id === selectedTrack);
   const selectedTopicObj = topics.find((topic) => topic.id === selectedTopic);
   const selectedSubtopicObj = subtopics.find((subtopic) => subtopic.id === selectedSubtopic);
+  const itemMatchesSelectedTopic = (item: SocialWorkBlueprintItem) => {
+    if (!selectedTopic) return true;
+    return item.topic_id === selectedTopic || labelsOverlap(item.major_content_area, selectedTopicObj?.title);
+  };
+  const itemMatchesSelectedSubtopic = (item: SocialWorkBlueprintItem) => {
+    if (!selectedSubtopic) return true;
+    return (
+      item.subtopic_id === selectedSubtopic ||
+      labelsOverlap(item.competency_section, selectedSubtopicObj?.title) ||
+      labelsOverlap(item.applied_knowledge_statement, selectedSubtopicObj?.title) ||
+      labelsOverlap(item.official_blueprint_text, selectedSubtopicObj?.learning_objective)
+    );
+  };
   const exactBlueprintItems = socialWorkBlueprintItems.filter((item) => {
-    if (selectedTopic && item.topic_id && item.topic_id !== selectedTopic) return false;
-    if (selectedSubtopic && item.subtopic_id && item.subtopic_id !== selectedSubtopic) return false;
+    if (selectedTopic && item.topic_id !== selectedTopic) return false;
+    if (selectedSubtopic && item.subtopic_id !== selectedSubtopic) return false;
     return true;
   });
+  const matchedBlueprintItems = socialWorkBlueprintItems.filter((item) => (
+    itemMatchesSelectedTopic(item) && itemMatchesSelectedSubtopic(item)
+  ));
   const topicBlueprintItems = socialWorkBlueprintItems.filter((item) => {
-    if (!selectedTopic) return true;
-    return !item.topic_id || item.topic_id === selectedTopic;
+    return itemMatchesSelectedTopic(item);
   });
   const selectableBlueprintItems = exactBlueprintItems.length
     ? exactBlueprintItems
-    : topicBlueprintItems.length
-      ? topicBlueprintItems
-      : socialWorkBlueprintItems;
-  const usingBlueprintFallback = socialWorkBlueprintItems.length > 0 && exactBlueprintItems.length === 0;
+    : matchedBlueprintItems.length
+      ? matchedBlueprintItems
+      : topicBlueprintItems.length
+        ? topicBlueprintItems
+        : socialWorkBlueprintItems;
+  const usingBlueprintFallback = socialWorkBlueprintItems.length > 0 && topicBlueprintItems.length === 0;
 
   const contentTypes: { value: ContentType; label: string; desc: string }[] = [
     { value: 'mcq', label: 'MCQ Questions', desc: 'Blueprint-grounded questions with rationales and integrity review' },
