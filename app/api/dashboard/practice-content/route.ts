@@ -18,6 +18,35 @@ const LIMIT_BY_TYPE: Record<ContentType, number> = {
   vignettes: 10,
 };
 
+const SELECT_BY_TYPE: Record<ContentType, string> = {
+  mcq: [
+    'id, exam_track_id, topic_id, subtopic_id, difficulty, cognitive_level, intended_cognitive_level',
+    'question_en, question_es, question_fr',
+    'option_a_en, option_a_es, option_a_fr',
+    'option_b_en, option_b_es, option_b_fr',
+    'option_c_en, option_c_es, option_c_fr',
+    'option_d_en, option_d_es, option_d_fr',
+    'correct_option, rationale_en, rationale_es, rationale_fr, correct_rationale_en',
+    'source_topic, subtopic, learning_objective',
+    'topic:topics(id, title, official_weight_percent)',
+    'subtopic_record:subtopics(id, title)',
+  ].join(', '),
+  flashcards: [
+    'id, exam_track_id, topic_id, subtopic_id, difficulty',
+    'front_en, front_es, front_fr, back_en, back_es, back_fr',
+    'topic:topics(id, title, official_weight_percent)',
+    'subtopic_record:subtopics(id, title)',
+  ].join(', '),
+  vignettes: [
+    'id, exam_track_id, topic_id, subtopic_id, difficulty',
+    'case_en, case_es, case_fr, prompt_en, prompt_es, prompt_fr',
+    'ideal_answer_en, ideal_answer_es, ideal_answer_fr, coaching_feedback_en, coaching_feedback_es, coaching_feedback_fr',
+    'rubric',
+    'topic:topics(id, title, official_weight_percent)',
+    'subtopic_record:subtopics(id, title)',
+  ].join(', '),
+};
+
 function isContentType(value: string | null): value is ContentType {
   return value === 'mcq' || value === 'flashcards' || value === 'vignettes';
 }
@@ -75,7 +104,7 @@ export async function GET(req: NextRequest) {
 
     const incompleteSessionRes = await (supabaseAdmin as any)
       .from('practice_sessions')
-      .select('*')
+      .select('id, user_id, exam_track_id, exam_id, mode, score_percent, completed, started_at, completed_at, content_item_ids, current_index, total_items, metadata')
       .eq('user_id', authUser.id)
       .eq('exam_track_id', examTrackId)
       .eq('mode', modeForType(contentType))
@@ -87,7 +116,7 @@ export async function GET(req: NextRequest) {
     const table = TABLE_BY_TYPE[contentType];
     let contentQuery = (supabaseAdmin as any)
       .from(table)
-      .select('*, topic:topics(id, title, official_weight_percent), subtopic_record:subtopics(id, title)')
+      .select(SELECT_BY_TYPE[contentType])
       .eq('exam_track_id', examTrackId)
       .eq('active', true)
       .eq('reviewed', true);

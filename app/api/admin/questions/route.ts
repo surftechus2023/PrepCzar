@@ -19,13 +19,17 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const pendingAi = searchParams.get('pendingAi') === 'true';
+    const page = Math.max(1, Number(searchParams.get('page') || 1));
+    const limit = Math.min(100, Math.max(10, Number(searchParams.get('limit') || (pendingAi ? 100 : 50))));
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
     const supabaseAdmin = getSupabaseAdmin();
 
     let questionsQuery = supabaseAdmin
       .from('questions')
-      .select(QUESTION_SELECT)
+      .select(QUESTION_SELECT, { count: 'exact' })
       .order('created_at', { ascending: false })
-      .limit(pendingAi ? 100 : 200);
+      .range(from, to);
 
     if (pendingAi) {
       questionsQuery = questionsQuery
@@ -33,18 +37,19 @@ export async function GET(req: NextRequest) {
         .or('generated_by_ai.eq.true,import_batch_id.not.is.null');
     }
 
-    let { data: questions, error: questionsError } = await questionsQuery;
+    let { data: questions, error: questionsError, count: questionsCount } = await questionsQuery;
 
     if (pendingAi && questionsError && isMissingColumn(questionsError.message)) {
       const fallback = await supabaseAdmin
         .from('questions')
-        .select(QUESTION_SELECT)
+        .select(QUESTION_SELECT, { count: 'exact' })
         .eq('reviewed', false)
         .order('created_at', { ascending: false })
-        .limit(100);
+        .range(from, to);
 
       questions = fallback.data;
       questionsError = fallback.error;
+      questionsCount = fallback.count;
     }
 
     if (questionsError) {
@@ -63,6 +68,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       questions: questions || [],
       tracks: tracks || [],
+      pagination: {
+        page,
+        limit,
+        total: questionsCount || 0,
+        hasMore: (questions || []).length === limit,
+      },
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

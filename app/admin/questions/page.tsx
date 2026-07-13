@@ -31,14 +31,17 @@ export default function AdminQuestionsPage() {
   const [filterTrack, setFilterTrack] = useState('');
   const [filterReviewed, setFilterReviewed] = useState('all');
   const [selectedQ, setSelectedQ] = useState<QuestionWithMeta | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    loadData();
+    loadData(1);
   }, []);
 
-  async function loadData() {
-    const res = await authenticatedFetch('/api/admin/questions');
+  async function loadData(nextPage = 1) {
+    setLoading(true);
+    const res = await authenticatedFetch(`/api/admin/questions?page=${nextPage}&limit=50`);
     const data = await res.json();
 
     if (!res.ok) {
@@ -47,8 +50,11 @@ export default function AdminQuestionsPage() {
       return;
     }
 
-    setQuestions((data.questions as QuestionWithMeta[]) || []);
+    const nextQuestions = (data.questions as QuestionWithMeta[]) || [];
+    setQuestions((current) => (nextPage === 1 ? nextQuestions : [...current, ...nextQuestions]));
     setTracks(data.tracks || []);
+    setPage(nextPage);
+    setHasMore(Boolean(data.pagination?.hasMore));
     setLoading(false);
   }
 
@@ -99,16 +105,16 @@ export default function AdminQuestionsPage() {
   });
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Questions</h1>
           <p className="text-muted-foreground text-sm">{questions.length} total questions</p>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3 mb-6">
-        <div className="relative flex-1 min-w-48">
+      <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:flex-wrap">
+        <div className="relative flex-1 min-w-0 sm:min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search questions..."
@@ -136,7 +142,7 @@ export default function AdminQuestionsPage() {
         </select>
       </div>
 
-      {loading ? (
+      {loading && questions.length === 0 ? (
         <div className="flex justify-center py-16">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
@@ -148,7 +154,7 @@ export default function AdminQuestionsPage() {
             filtered.map((q) => (
               <Card key={q.id} className="border-border hover:border-primary/20 transition-colors">
                 <CardContent className="p-4">
-                  <div className="flex items-start gap-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap gap-2 mb-2">
                         <Badge variant="secondary" className="text-xs">{(q.exam_track as any)?.name || 'Unknown'}</Badge>
@@ -168,13 +174,13 @@ export default function AdminQuestionsPage() {
                       <p className="text-sm text-foreground line-clamp-2">{q.question_en}</p>
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
-                      <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => setSelectedQ(q)}>
+                      <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => setSelectedQ(q)}>
                         <Eye className="w-3.5 h-3.5" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="w-8 h-8"
+                        className="h-10 w-10"
                         onClick={() => toggleReviewed(q)}
                         title={q.reviewed ? 'Mark as unreviewed' : 'Mark as reviewed'}
                       >
@@ -183,7 +189,7 @@ export default function AdminQuestionsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="w-8 h-8"
+                        className="h-10 w-10"
                         onClick={() => toggleActive(q)}
                         title={q.active ? 'Deactivate' : 'Activate'}
                       >
@@ -193,7 +199,7 @@ export default function AdminQuestionsPage() {
                           <span className="w-3.5 h-3.5 rounded-full bg-slate-300 block" />
                         )}
                       </Button>
-                      <Button variant="ghost" size="icon" className="w-8 h-8 text-destructive" onClick={() => deleteQuestion(q.id)}>
+                      <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive" onClick={() => deleteQuestion(q.id)}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </div>
@@ -202,6 +208,14 @@ export default function AdminQuestionsPage() {
               </Card>
             ))
           )}
+        </div>
+      )}
+
+      {!loading && hasMore && (
+        <div className="flex justify-center pt-6">
+          <Button variant="outline" onClick={() => loadData(page + 1)}>
+            Load More Questions
+          </Button>
         </div>
       )}
 
@@ -216,7 +230,7 @@ export default function AdminQuestionsPage() {
                 <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Question (EN)</p>
                 <p className="text-foreground">{selectedQ.question_en}</p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 {(['a', 'b', 'c', 'd'] as const).map(opt => (
                   <div key={opt} className={`p-3 rounded-lg border text-sm ${selectedQ.correct_option === opt ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-950' : 'border-border'}`}>
                     <span className="font-bold mr-2">{opt.toUpperCase()}.</span>
@@ -229,7 +243,7 @@ export default function AdminQuestionsPage() {
                 <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Rationale</p>
                 <p className="text-sm text-muted-foreground">{selectedQ.rationale_en}</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Button
                   size="sm"
                   variant={selectedQ.reviewed ? 'outline' : 'default'}
