@@ -10,6 +10,7 @@ import { parsePdfBuffer } from '@/lib/content-import/parse-pdf';
 import { parseTextContent } from '@/lib/content-import/parse-text';
 import type { ImportedContentType, ImportCleanupMode, ParsedImportItem } from '@/lib/content-import/types';
 import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
+import { enforceRateLimit } from '@/lib/security/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -173,6 +174,8 @@ export async function POST(req: NextRequest) {
   try {
     const adminUser = await requireAdmin(req);
     if (!adminUser) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    const limited = await enforceRateLimit(req, { keyPrefix: 'admin:content-import-preview', actorId: adminUser.id, limit: 30, windowMs: 60 * 60 * 1000 });
+    if (limited) return limited;
 
     const form = await req.formData();
     const contentType = form.get('contentType') as ImportedContentType;

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getAuthenticatedUser, getSupabaseAdmin } from '@/lib/server-auth';
 import { getSiteUrl } from '@/lib/site-url';
 import { EXPECTED_MONTHLY_PRICES, SUBSCRIPTION_ACCESS_STATUSES, getStripePriceIdForTrackSlug } from '@/lib/stripe';
+import { enforceRateLimit } from '@/lib/security/rate-limit';
 
 const checkoutSchema = z.object({
   examTrackId: z.string().uuid(),
@@ -26,6 +27,8 @@ export async function POST(req: NextRequest) {
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const limited = await enforceRateLimit(req, { keyPrefix: 'stripe:checkout', actorId: user.id, limit: 10, windowMs: 15 * 60 * 1000 });
+    if (limited) return limited;
 
     const parsed = checkoutSchema.safeParse(await req.json());
     if (!parsed.success) {

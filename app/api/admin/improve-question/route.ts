@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { logAIUsage, resolveAIModelSetting } from '@/lib/ai/model-settings';
 import { autoImproveStoredQuestion } from '@/lib/content-integrity/question-improver';
 import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
+import { enforceRateLimit } from '@/lib/security/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,8 @@ export async function POST(req: NextRequest) {
     if (!adminUser) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
+    const limited = await enforceRateLimit(req, { keyPrefix: 'admin:auto-improve', actorId: adminUser.id, limit: 30, windowMs: 60 * 60 * 1000 });
+    if (limited) return limited;
 
     const parsed = requestSchema.safeParse(await req.json());
     if (!parsed.success) {

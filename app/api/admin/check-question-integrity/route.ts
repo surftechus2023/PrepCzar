@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { checkAndUpdateQuestionIntegrity } from '@/lib/content-integrity/question-integrity-checker';
 import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
+import { enforceRateLimit } from '@/lib/security/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,8 @@ export async function POST(req: NextRequest) {
     if (!adminUser) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
+    const limited = await enforceRateLimit(req, { keyPrefix: 'admin:integrity-review', actorId: adminUser.id, limit: 60, windowMs: 60 * 60 * 1000 });
+    if (limited) return limited;
 
     const parsed = requestSchema.safeParse(await req.json());
     if (!parsed.success) {

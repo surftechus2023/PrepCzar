@@ -31,6 +31,7 @@ import {
   generateVignettesFromBlueprint,
 } from '@/lib/content-generation/vignette-generator';
 import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
+import { enforceRateLimit } from '@/lib/security/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -179,6 +180,8 @@ export async function POST(req: NextRequest) {
     const adminUser = await requireAdmin(req);
     if (!adminUser) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     adminUserId = adminUser.id;
+    const limited = await enforceRateLimit(req, { keyPrefix: 'admin:generate-content', actorId: adminUser.id, limit: 6, windowMs: 60 * 60 * 1000 });
+    if (limited) return limited;
 
     const parsed = generateSchema.safeParse(await req.json());
     if (!parsed.success) {

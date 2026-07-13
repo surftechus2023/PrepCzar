@@ -24,6 +24,7 @@ import {
 } from '@/lib/content-integrity/question-improver';
 import { getExamTrackRules, isRecallOnlyStem } from '@/lib/content-generation/exam-track-rules';
 import { buildBlueprintContext } from '@/lib/blueprint/blueprint-context-builder';
+import { enforceRateLimit } from '@/lib/security/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,6 +87,8 @@ export async function POST(req: NextRequest) {
     if (!adminUser) {
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
+    const limited = await enforceRateLimit(req, { keyPrefix: 'admin:generate-questions', actorId: adminUser.id, limit: 6, windowMs: 60 * 60 * 1000 });
+    if (limited) return limited;
 
     const parsed = requestSchema.safeParse(await req.json());
     if (!parsed.success) {

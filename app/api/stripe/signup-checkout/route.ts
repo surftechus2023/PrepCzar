@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getSupabaseAdmin } from '@/lib/server-auth';
 import { getSiteUrl } from '@/lib/site-url';
 import { EXPECTED_MONTHLY_PRICES, SUBSCRIPTION_ACCESS_STATUSES, getStripePriceIdForTrackSlug } from '@/lib/stripe';
+import { enforceRateLimit } from '@/lib/security/rate-limit';
 
 const signupCheckoutSchema = z.object({
   email: z.string().trim().email().transform((value) => value.toLowerCase()),
@@ -24,6 +25,9 @@ export async function POST(req: NextRequest) {
         { status: 503 }
       );
     }
+
+    const limited = await enforceRateLimit(req, { keyPrefix: 'stripe:signup-checkout', limit: 5, windowMs: 15 * 60 * 1000 });
+    if (limited) return limited;
 
     const parsed = signupCheckoutSchema.safeParse(await req.json());
     if (!parsed.success) {
