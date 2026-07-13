@@ -8,7 +8,10 @@ export async function authenticatedFetch(input: RequestInfo | URL, init: Request
     headers.set('Authorization', `Bearer ${session.access_token}`);
   }
 
-  if (init.body && !headers.has('Content-Type')) {
+  const isFormData = typeof FormData !== 'undefined' && init.body instanceof FormData;
+  const isUrlEncoded = typeof URLSearchParams !== 'undefined' && init.body instanceof URLSearchParams;
+
+  if (init.body && !headers.has('Content-Type') && !isFormData && !isUrlEncoded) {
     headers.set('Content-Type', 'application/json');
   }
 
