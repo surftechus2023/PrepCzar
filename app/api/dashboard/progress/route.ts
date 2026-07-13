@@ -7,6 +7,10 @@ function average(values: number[]) {
   return values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : 0;
 }
 
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export async function GET(req: NextRequest) {
   try {
     const authUser = await getAuthenticatedUser(req);
@@ -47,12 +51,41 @@ export async function GET(req: NextRequest) {
     const recentScores = scores.slice(0, 5).map((score: any) => Number(score.score || 0));
     const olderScores = scores.slice(5, 10).map((score: any) => Number(score.score || 0));
 
+    const weakTopicIds = Array.from(new Set(
+      scores.flatMap((score: any) => Array.isArray(score.weak_topics) ? score.weak_topics : [])
+        .filter((topic: unknown): topic is string => typeof topic === 'string' && isUuid(topic))
+    ));
+
+    const topicTitleMap = new Map<string, string>();
+    if (weakTopicIds.length > 0) {
+      const { data: topics, error: topicsError } = await supabaseAdmin
+        .from('topics')
+        .select('id, title')
+        .in('id', weakTopicIds);
+
+      if (topicsError) return NextResponse.json({ error: topicsError.message }, { status: 500 });
+      (topics || []).forEach((topic: any) => {
+        topicTitleMap.set(topic.id, topic.title);
+      });
+    }
+
     const weakDomainMap = new Map<string, number>();
     scores.forEach((score: any) => {
       const weakTopics = Array.isArray(score.weak_topics) ? score.weak_topics : [];
       weakTopics.forEach((topic: unknown) => {
-        const label = typeof topic === 'string' ? topic : JSON.stringify(topic);
+        const rawLabel = typeof topic === 'string' ? topic : JSON.stringify(topic);
+        const label = isUuid(rawLabel) ? topicTitleMap.get(rawLabel) : rawLabel;
+        if (!label) return;
         weakDomainMap.set(label, (weakDomainMap.get(label) || 0) + 1);
+      });
+    });
+
+    sessions.forEach((session: any) => {
+      const weakDomains = session.metadata?.weakDomains;
+      if (!weakDomains || typeof weakDomains !== 'object' || Array.isArray(weakDomains)) return;
+      Object.entries(weakDomains).forEach(([label, count]) => {
+        if (!label || isUuid(label)) return;
+        weakDomainMap.set(label, (weakDomainMap.get(label) || 0) + Number(count || 1));
       });
     });
 

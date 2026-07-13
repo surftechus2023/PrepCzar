@@ -252,13 +252,12 @@ export default function DashboardPage() {
 
           {diagnostics?.weakBlueprintDomains?.length ? (
             <div>
-              <h2 className="text-lg font-semibold text-foreground mb-4">Weak Blueprint Domains</h2>
+              <h2 className="text-lg font-semibold text-foreground mb-4">Weak Practice Topics</h2>
               <Card className="border-border">
                 <CardContent className="p-4 space-y-2">
                   {diagnostics.weakBlueprintDomains.map((domain) => (
-                    <div key={domain.label} className="flex items-center justify-between gap-3 text-sm">
+                    <div key={domain.label} className="flex items-center gap-3 text-sm">
                       <span className="truncate text-muted-foreground">{domain.label}</span>
-                      <Badge variant="secondary">{domain.count}</Badge>
                     </div>
                   ))}
                 </CardContent>
