@@ -312,8 +312,8 @@ export default function ReviewQuestionsPage() {
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-foreground">AI Question Review</h1>
-        <p className="text-sm text-muted-foreground mt-1">Review generated MCQs before students can see them.</p>
+        <h1 className="text-2xl font-bold text-foreground">Question Review</h1>
+        <p className="text-sm text-muted-foreground mt-1">Review generated and imported MCQs before students can see them.</p>
       </div>
 
       {loading ? (
@@ -322,7 +322,7 @@ export default function ReviewQuestionsPage() {
         </div>
       ) : questions.length === 0 ? (
         <Card>
-          <CardContent className="p-8 text-center text-muted-foreground">No AI-generated questions are pending review.</CardContent>
+          <CardContent className="p-8 text-center text-muted-foreground">No generated or imported questions are pending review.</CardContent>
         </Card>
       ) : (
         <div className="space-y-4">

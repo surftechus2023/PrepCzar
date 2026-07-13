@@ -28,7 +28,9 @@ export async function GET(req: NextRequest) {
       .limit(pendingAi ? 100 : 200);
 
     if (pendingAi) {
-      questionsQuery = questionsQuery.eq('generated_by_ai', true).eq('reviewed', false);
+      questionsQuery = questionsQuery
+        .eq('reviewed', false)
+        .or('generated_by_ai.eq.true,import_batch_id.not.is.null');
     }
 
     let { data: questions, error: questionsError } = await questionsQuery;
