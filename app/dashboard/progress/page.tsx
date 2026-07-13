@@ -20,10 +20,29 @@ interface ScoreWithTrack extends Score {
   exam?: ExamTrack;
 }
 
+interface PerformanceSlice {
+  label: string;
+  attempts: number;
+  score: number;
+  averageResponseTimeSeconds: number | null;
+}
+
+interface ProgressDiagnostics {
+  completionRate: number;
+  averageResponseTimeSeconds: number | null;
+  domainPerformance: PerformanceSlice[];
+  competencyPerformance: PerformanceSlice[];
+  difficultyPerformance: PerformanceSlice[];
+  cognitiveLevelPerformance: PerformanceSlice[];
+  weakAreas: PerformanceSlice[];
+  strengths: PerformanceSlice[];
+}
+
 export default function ProgressPage() {
   const { profile } = useAuth();
   const [scores, setScores] = useState<ScoreWithTrack[]>([]);
   const [sessions, setSessions] = useState<SessionWithTrack[]>([]);
+  const [diagnostics, setDiagnostics] = useState<ProgressDiagnostics | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
@@ -34,6 +53,7 @@ export default function ProgressPage() {
 
     setScores(res.ok ? (json.scores as ScoreWithTrack[]) || [] : []);
     setSessions(res.ok ? (json.sessions as SessionWithTrack[]) || [] : []);
+    setDiagnostics(res.ok ? json.diagnostics || null : null);
     setLoading(false);
   }, [profile]);
 
@@ -80,9 +100,9 @@ export default function ProgressPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         {[
           { label: 'Sessions Done', value: completedSessions.length, icon: Trophy, color: 'text-emerald-600', bg: 'bg-emerald-100 dark:bg-emerald-950' },
-          { label: 'Total Questions', value: scores.length * 100, icon: BarChart3, color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-950' },
+          { label: 'Completion Rate', value: `${diagnostics?.completionRate || 0}%`, icon: BarChart3, color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-950' },
           { label: 'Average Score', value: `${avgScore}%`, icon: Target, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-950' },
-          { label: 'Study Streak', value: '5 days', icon: TrendingUp, color: 'text-rose-600', bg: 'bg-rose-100 dark:bg-rose-950' },
+          { label: 'Avg Response Time', value: diagnostics?.averageResponseTimeSeconds ? `${diagnostics.averageResponseTimeSeconds}s` : '--', icon: Clock, color: 'text-rose-600', bg: 'bg-rose-100 dark:bg-rose-950' },
         ].map((stat) => {
           const Icon = stat.icon;
           return (
@@ -165,6 +185,51 @@ export default function ProgressPage() {
           </CardContent>
         </Card>
 
+        <PerformanceCard title="Domain Performance" items={diagnostics?.domainPerformance || []} empty="Answer MCQs to see domain performance." />
+        <PerformanceCard title="Competency Performance" items={diagnostics?.competencyPerformance || []} empty="Answer MCQs to see competency performance." />
+        <PerformanceCard title="Difficulty Performance" items={diagnostics?.difficultyPerformance || []} empty="Answer MCQs to see difficulty performance." />
+        <PerformanceCard title="Cognitive-Level Performance" items={diagnostics?.cognitiveLevelPerformance || []} empty="Answer MCQs to see cognitive-level performance." />
+
+        <Card className="border-border">
+          <CardHeader>
+            <CardTitle className="text-base">Weak Areas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {(diagnostics?.weakAreas || []).length > 0 ? (
+              <div className="space-y-2">
+                {diagnostics!.weakAreas.map((item) => (
+                  <div key={item.label} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground truncate">{item.label}</span>
+                    <Badge variant="destructive">{item.score}%</Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No reliable weak areas yet.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-border">
+          <CardHeader>
+            <CardTitle className="text-base">Strengths</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {(diagnostics?.strengths || []).length > 0 ? (
+              <div className="space-y-2">
+                {diagnostics!.strengths.map((item) => (
+                  <div key={item.label} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground truncate">{item.label}</span>
+                    <Badge>{item.score}%</Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Strengths appear after more response data is available.</p>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Recent sessions */}
         <Card className="border-border lg:col-span-2">
           <CardHeader>
@@ -208,5 +273,35 @@ export default function ProgressPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+function PerformanceCard({ title, items, empty }: { title: string; items: PerformanceSlice[]; empty: string }) {
+  return (
+    <Card className="border-border">
+      <CardHeader>
+        <CardTitle className="text-base">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {items.length > 0 ? (
+          <div className="space-y-4">
+            {items.slice(0, 6).map((item) => (
+              <div key={item.label}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-sm font-medium text-foreground truncate max-w-[65%]">{item.label}</span>
+                  <span className="text-sm font-bold text-foreground">{item.score}%</span>
+                </div>
+                <Progress value={item.score} className="h-2" />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {item.attempts} attempts{item.averageResponseTimeSeconds ? ` · ${item.averageResponseTimeSeconds}s avg` : ''}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground py-4 text-center">{empty}</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

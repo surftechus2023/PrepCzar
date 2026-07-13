@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, BarChart3, Loader2, Search, Target, Users } from 'lucide-react';
+import { Activity, BarChart3, Download, Loader2, Search, ShieldAlert, Target, Users } from 'lucide-react';
 import { authenticatedFetch } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import {
@@ -40,6 +41,44 @@ type AnalyticsData = {
     averageScore: number | null;
   };
   rows: AnalyticsRow[];
+  contentAnalytics: {
+    byTrack: Array<{
+      trackId: string;
+      trackName: string;
+      activeQuestions: number;
+      totalQuestions: number;
+      reviewed: number;
+      pending: number;
+      integrityPassRate: number | null;
+      averageAlignmentScore: number | null;
+      averageDifficultyQualityScore: number | null;
+      autoImprovementSuccessRate: number | null;
+      rejectedItemCount: number;
+    }>;
+    coverage: Array<{
+      trackName: string;
+      topicName: string;
+      blueprintWeightPercent: number | null;
+      activeQuestionCount: number;
+      contentSharePercent: number | null;
+      coverageDeltaPercent: number | null;
+    }>;
+  };
+  itemAnalytics: Array<{
+    questionId: string;
+    trackName: string;
+    topicName: string;
+    attempts: number;
+    percentCorrect: number | null;
+    averageResponseTimeSeconds: number | null;
+    reliabilityNote: string;
+  }>;
+  subscriptionSummary: {
+    activeSubscriptions: number;
+    trialingSubscriptions: number;
+    estimatedMonthlyRevenue: number;
+  };
+  fairnessNotice: string;
 };
 
 function formatScore(score: number | null) {
@@ -55,6 +94,10 @@ function statusVariant(status: string) {
   if (status === 'Likely pass') return 'default';
   if (status === 'Needs support') return 'destructive';
   return 'secondary';
+}
+
+function exportUrl(type: string) {
+  return `/api/admin/analytics?export=${type}`;
 }
 
 export default function AdminAnalyticsPage() {
@@ -108,9 +151,9 @@ export default function AdminAnalyticsPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-foreground">Student Analytics</h1>
+        <h1 className="text-2xl font-bold text-foreground">Analytics & Reporting</h1>
         <p className="text-muted-foreground text-sm">
-          Track student exam access, attempts, score trends, pass readiness, and weak-area diagnosis.
+          Track student performance, content coverage, item behavior, review quality, and exports.
         </p>
       </div>
 
@@ -134,6 +177,23 @@ export default function AdminAnalyticsPage() {
             </Card>
           );
         })}
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-6">
+        {[
+          ['content_inventory', 'Content Inventory'],
+          ['blueprint_coverage', 'Blueprint Coverage'],
+          ['question_quality', 'Question Quality'],
+          ['item_performance', 'Item Performance'],
+          ['subscription_revenue', 'Subscription Revenue'],
+        ].map(([type, label]) => (
+          <Button key={type} variant="outline" size="sm" asChild>
+            <a href={exportUrl(type)}>
+              <Download className="w-4 h-4 mr-2" />
+              {label} CSV
+            </a>
+          </Button>
+        ))}
       </div>
 
       <Card className="border-border">
@@ -198,6 +258,108 @@ export default function AdminAnalyticsPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <div className="grid lg:grid-cols-2 gap-6 mt-6">
+        <Card className="border-border lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">Admin Content Analytics</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Exam Track</TableHead>
+                  <TableHead>Active / Total</TableHead>
+                  <TableHead>Reviewed / Pending</TableHead>
+                  <TableHead>Pass Rate</TableHead>
+                  <TableHead>Avg Alignment</TableHead>
+                  <TableHead>Avg Difficulty Quality</TableHead>
+                  <TableHead>Auto-Improve Success</TableHead>
+                  <TableHead>Rejected</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(data?.contentAnalytics.byTrack || []).map((row) => (
+                  <TableRow key={row.trackId}>
+                    <TableCell>{row.trackName}</TableCell>
+                    <TableCell>{row.activeQuestions}/{row.totalQuestions}</TableCell>
+                    <TableCell>{row.reviewed}/{row.pending}</TableCell>
+                    <TableCell>{formatScore(row.integrityPassRate)}</TableCell>
+                    <TableCell>{formatScore(row.averageAlignmentScore)}</TableCell>
+                    <TableCell>{formatScore(row.averageDifficultyQualityScore)}</TableCell>
+                    <TableCell>{formatScore(row.autoImprovementSuccessRate)}</TableCell>
+                    <TableCell>{row.rejectedItemCount}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border">
+          <CardHeader>
+            <CardTitle className="text-base">Blueprint Coverage</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+              {(data?.contentAnalytics.coverage || []).slice(0, 20).map((row) => (
+                <div key={`${row.trackName}-${row.topicName}`} className="border-b border-border pb-3 last:border-b-0">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{row.topicName}</p>
+                      <p className="text-xs text-muted-foreground">{row.trackName}</p>
+                    </div>
+                    <Badge variant="secondary">{row.activeQuestionCount} active</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Blueprint: {row.blueprintWeightPercent ?? 'N/A'}% · Content: {row.contentSharePercent ?? 'N/A'}% · Delta: {row.coverageDeltaPercent ?? 'N/A'}%
+                  </p>
+                </div>
+              ))}
+              {(data?.contentAnalytics.coverage || []).length === 0 && (
+                <p className="text-sm text-muted-foreground">No blueprint coverage data yet.</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border">
+          <CardHeader>
+            <CardTitle className="text-base">Item Analytics</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+              {(data?.itemAnalytics || []).slice(0, 20).map((item) => (
+                <div key={item.questionId} className="border-b border-border pb-3 last:border-b-0">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-foreground truncate">{item.topicName}</p>
+                    <Badge variant={item.attempts >= 30 ? 'default' : 'secondary'}>{item.attempts} attempts</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Correct: {formatScore(item.percentCorrect)} · Avg time: {item.averageResponseTimeSeconds ? `${item.averageResponseTimeSeconds}s` : 'N/A'}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">{item.reliabilityNote}</p>
+                </div>
+              ))}
+              {(data?.itemAnalytics || []).length === 0 && (
+                <p className="text-sm text-muted-foreground">Insufficient response data for reliable item statistics.</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border lg:col-span-2">
+          <CardContent className="p-5 flex items-start gap-3">
+            <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-foreground">Fairness and DIF Foundation</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {data?.fairnessNotice || 'DIF infrastructure is preparatory only. Do not infer sensitive demographic characteristics or treat AI-only bias review as formal psychometric validation.'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
