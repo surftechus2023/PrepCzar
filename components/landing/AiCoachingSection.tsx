@@ -11,10 +11,10 @@ const benefits: { icon: React.ElementType; titleKey: TranslationKey; descKey: Tr
   { icon: MessageSquare, titleKey: 'ai_b4_title', descKey: 'ai_b4_desc' },
 ];
 
-const weakTopics = [
-  { topic: 'Psychopharmacology', score: 52, color: 'bg-red-500' },
-  { topic: 'Trauma-Focused CBT', score: 61, color: 'bg-amber-500' },
-  { topic: 'Ethics & Dual Relationships', score: 68, color: 'bg-yellow-500' },
+const dashboardSignals = [
+  { label: 'Weak blueprint topics', detail: 'From missed questions', width: 78, color: 'bg-red-500' },
+  { label: 'Score and domain trends', detail: 'From completed sessions', width: 64, color: 'bg-amber-500' },
+  { label: 'Recommended next practice', detail: 'Based on weak areas', width: 52, color: 'bg-yellow-500' },
 ];
 
 export function AiCoachingSection() {
@@ -45,16 +45,16 @@ export function AiCoachingSection() {
                   {t('ai_panel_needs')}
                 </p>
                 <div className="space-y-2">
-                  {weakTopics.map((item) => (
-                    <div key={item.topic}>
+                  {dashboardSignals.map((item) => (
+                    <div key={item.label}>
                       <div className="flex justify-between text-xs mb-1">
-                        <span className="text-slate-300">{item.topic}</span>
-                        <span className="text-slate-400">{item.score}%</span>
+                        <span className="text-slate-300">{item.label}</span>
+                        <span className="text-slate-400">{item.detail}</span>
                       </div>
                       <div className="h-1.5 bg-slate-700 rounded-full overflow-hidden">
                         <div
                           className={`h-full ${item.color} rounded-full`}
-                          style={{ width: `${item.score}%` }}
+                          style={{ width: `${item.width}%` }}
                         />
                       </div>
                     </div>
