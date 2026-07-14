@@ -1,6 +1,5 @@
 import { Navbar } from '@/components/layout/Navbar';
 import { HeroSection } from '@/components/landing/HeroSection';
-import { ExamCategoriesSection } from '@/components/landing/ExamCategoriesSection';
 import { FeaturesSection } from '@/components/landing/FeaturesSection';
 import { VoicePracticeSection } from '@/components/landing/VoicePracticeSection';
 import { AiCoachingSection } from '@/components/landing/AiCoachingSection';
@@ -15,7 +14,6 @@ export default function HomePage() {
     <div className="min-h-screen">
       <Navbar />
       <HeroSection />
-      <ExamCategoriesSection />
       <FeaturesSection />
       <VoicePracticeSection />
       <AiCoachingSection />

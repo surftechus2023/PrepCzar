@@ -31,7 +31,7 @@ const translations = {
     hero_benefit_3: 'AI-Powered Questions',
     hero_benefit_4: 'Detailed Rationales',
     hero_lang_label: 'Study in your language',
-    hero_cta_trial: 'Choose Your Exam',
+    hero_cta_trial: 'Choose Your Exam & View Pricing',
     hero_cta_pricing: 'View Pricing',
     hero_stat_questions: 'Exam Questions',
     hero_stat_students: 'Students Passed',
@@ -203,7 +203,7 @@ const translations = {
     // CTA Section
     cta_heading: 'Ready to Pass Your Exam?',
     cta_sub: 'Subscribe to your specific licensing exam and gain instant access to AI-powered preparation tools. 1,000+ questions, flashcards, case vignettes, and voice practice — all in your language.',
-    cta_trial: 'Subscribe Now',
+    cta_trial: 'Choose Your Exam & Subscribe',
     cta_plans: 'Choose Your Exam',
 
     // Footer
@@ -252,7 +252,7 @@ const translations = {
     hero_benefit_3: 'Preguntas con IA',
     hero_benefit_4: 'Justificaciones detalladas',
     hero_lang_label: 'Estudia en tu idioma',
-    hero_cta_trial: 'Elige tu examen',
+    hero_cta_trial: 'Elige tu examen y ve precios',
     hero_cta_pricing: 'Ver precios',
     hero_stat_questions: 'Preguntas de examen',
     hero_stat_students: 'Estudiantes aprobados',
@@ -424,7 +424,7 @@ const translations = {
     // CTA Section
     cta_heading: '¿Listo para aprobar tu examen?',
     cta_sub: 'Suscríbete a tu examen de licencia específico y obtén acceso instantáneo a herramientas de preparación con IA. Más de 1,000 preguntas, tarjetas, viñetas de casos y práctica de voz — en tu idioma.',
-    cta_trial: 'Suscribirse ahora',
+    cta_trial: 'Elige tu examen y suscríbete',
     cta_plans: 'Elige tu examen',
 
     // Footer
@@ -473,7 +473,7 @@ const translations = {
     hero_benefit_3: "Questions générées par l'IA",
     hero_benefit_4: 'Justifications détaillées',
     hero_lang_label: 'Étudiez dans votre langue',
-    hero_cta_trial: 'Choisissez votre examen',
+    hero_cta_trial: 'Choisissez votre examen et voyez les tarifs',
     hero_cta_pricing: 'Voir les tarifs',
     hero_stat_questions: "Questions d'examen",
     hero_stat_students: 'Étudiants admis',
@@ -645,7 +645,7 @@ const translations = {
     // CTA Section
     cta_heading: 'Prêt à réussir votre examen ?',
     cta_sub: "Abonnez-vous à votre examen de licence spécifique et obtenez un accès instantané aux outils de préparation alimentés par l'IA. Plus de 1 000 questions, flashcards, vignettes cliniques et pratique vocale — dans votre langue.",
-    cta_trial: "S'abonner maintenant",
+    cta_trial: "Choisissez votre examen et abonnez-vous",
     cta_plans: 'Choisissez votre examen',
 
     // Footer

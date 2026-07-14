@@ -22,7 +22,6 @@ import { useLang, Language } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 const navLinks = [
-  { key: 'nav_exams' as const, href: '#exams' },
   { key: 'nav_features' as const, href: '#features' },
   { key: 'nav_pricing' as const, href: '#pricing' },
   { key: 'nav_faq' as const, href: '#faq' },

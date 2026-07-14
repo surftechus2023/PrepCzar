@@ -22,7 +22,7 @@ export function CTASection() {
         <p className="text-xl text-slate-300 mb-10 max-w-2xl mx-auto leading-relaxed">
           {t('cta_sub')}
         </p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        <div className="flex justify-center">
           <Button
             size="lg"
             className="bg-blue-500 hover:bg-blue-600 text-white px-10 py-6 text-lg shadow-brand-lg group"
@@ -32,14 +32,6 @@ export function CTASection() {
               {t('cta_trial')}
               <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
             </Link>
-          </Button>
-          <Button
-            size="lg"
-            variant="outline"
-            className="border-white/30 text-white bg-white/10 hover:bg-white/20 px-10 py-6 text-lg"
-            asChild
-          >
-            <Link href="#pricing">{t('cta_plans')}</Link>
           </Button>
         </div>
       </div>
