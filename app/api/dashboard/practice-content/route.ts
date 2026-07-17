@@ -66,6 +66,8 @@ export async function GET(req: NextRequest) {
     const examTrackId = searchParams.get('exam');
     const contentType = searchParams.get('type');
     const resumeSessionId = searchParams.get('session');
+    const optionsOnly = searchParams.get('optionsOnly') === 'true';
+    const topicId = searchParams.get('topic');
 
     if (!examTrackId || !isContentType(contentType)) {
       return NextResponse.json({ error: 'Exam track and content type are required' }, { status: 400 });
@@ -84,6 +86,50 @@ export async function GET(req: NextRequest) {
       .maybeSingle();
 
     if (trackError) return NextResponse.json({ error: trackError.message }, { status: 500 });
+
+    const table = TABLE_BY_TYPE[contentType];
+
+    let focusOptionsQuery = (supabaseAdmin as any)
+      .from(table)
+      .select('topic_id, topic:topics(id, title, official_weight_percent)')
+      .eq('exam_track_id', examTrackId)
+      .eq('active', true)
+      .eq('reviewed', true)
+      .not('topic_id', 'is', null);
+
+    if (contentType === 'mcq') {
+      focusOptionsQuery = focusOptionsQuery.or(
+        'and(integrity_status.eq.passed,committee_status.eq.approved,blueprint_alignment_score.gte.90,difficulty_quality_score.gte.80,integrity_score.gte.85,difficulty.neq.easy,plagiarism_risk_score.lte.70),and(admin_override.eq.true,admin_override_reason.not.is.null,admin_override_by.not.is.null,admin_override_at.not.is.null)'
+      );
+    }
+
+    const { data: focusRows, error: focusError } = await focusOptionsQuery.limit(1000);
+    if (focusError) return NextResponse.json({ error: focusError.message }, { status: 500 });
+
+    const focusMap = new Map<string, { id: string; title: string; count: number; weight: number | null }>();
+    (focusRows || []).forEach((row: any) => {
+      const id = row.topic_id;
+      if (!id) return;
+      const topic = Array.isArray(row.topic) ? row.topic[0] : row.topic;
+      const existing = focusMap.get(id);
+      focusMap.set(id, {
+        id,
+        title: topic?.title || 'Untitled topic',
+        count: (existing?.count || 0) + 1,
+        weight: topic?.official_weight_percent ?? existing?.weight ?? null,
+      });
+    });
+
+    const focusOptions = Array.from(focusMap.values())
+      .sort((left, right) => {
+        const leftWeight = Number(left.weight || 0);
+        const rightWeight = Number(right.weight || 0);
+        return rightWeight - leftWeight || left.title.localeCompare(right.title);
+      });
+
+    if (optionsOnly) {
+      return NextResponse.json({ track, focusOptions });
+    }
 
     const { data: sessions, error: sessionsError } = await supabaseAdmin
       .from('practice_sessions')
@@ -132,7 +178,6 @@ export async function GET(req: NextRequest) {
         : [];
     }
 
-    const table = TABLE_BY_TYPE[contentType];
     let contentQuery = (supabaseAdmin as any)
       .from(table)
       .select(SELECT_BY_TYPE[contentType])
@@ -148,6 +193,8 @@ export async function GET(req: NextRequest) {
 
     if (resumeItemIds.length > 0) {
       contentQuery = contentQuery.in('id', resumeItemIds);
+    } else if (topicId && topicId !== 'all') {
+      contentQuery = contentQuery.eq('topic_id', topicId);
     }
 
     const { data: content, error: contentError } = await contentQuery.limit(resumeItemIds.length || Math.max(limit * 3, limit));
@@ -176,6 +223,7 @@ export async function GET(req: NextRequest) {
       track,
       content: orderedContent,
       limit,
+      focusOptions,
       incompleteSession: incompleteSessionRes.data || null,
     });
   } catch (err: any) {

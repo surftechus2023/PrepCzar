@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { authenticatedFetch } from '@/lib/api';
 import { useVoice } from '@/hooks/useVoice';
+import { PracticeFocusSelector, type PracticeFocusOption } from '@/components/dashboard/PracticeFocusSelector';
 import type { Flashcard, Exam, PracticeSession } from '@/types/database';
 
 export default function FlashcardsPage() {
@@ -35,6 +36,7 @@ function FlashcardsContent() {
   const examId = searchParams.get('exam');
   const sessionId = searchParams.get('session');
   const startNew = searchParams.get('start') === 'new';
+  const topicFocus = searchParams.get('topic');
   const router = useRouter();
   const { profile } = useAuth();
 
@@ -50,6 +52,7 @@ function FlashcardsContent() {
   const [lang, setLang] = useState<'en' | 'es' | 'fr'>('en');
   const [session, setSession] = useState<PracticeSession | null>(null);
   const [resumableSession, setResumableSession] = useState<PracticeSession | null>(null);
+  const [focusOptions, setFocusOptions] = useState<PracticeFocusOption[] | null>(null);
 
   const { voiceEnabled, speak } = useVoice();
 
@@ -63,6 +66,7 @@ function FlashcardsContent() {
     setLoading(true);
     setLoadError('');
     setResumableSession(null);
+    setFocusOptions(null);
     setCompleted(false);
     setFlashcards([]);
     setKnown(new Set());
@@ -108,7 +112,8 @@ function FlashcardsContent() {
     }
 
     const sessionParam = sessionId ? `&session=${sessionId}` : '';
-    const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=flashcards&exam=${targetExamId}${sessionParam}`);
+    const topicParam = topicFocus ? `&topic=${topicFocus}` : '';
+    const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=flashcards&exam=${targetExamId}${sessionParam}${topicParam}`);
     const contentJson = await contentRes.json();
 
     if (!contentRes.ok) {
@@ -124,6 +129,12 @@ function FlashcardsContent() {
 
     if (!sessionId && !startNew && contentJson.incompleteSession) {
       setResumableSession(contentJson.incompleteSession as PracticeSession);
+      setLoading(false);
+      return;
+    }
+
+    if (!sessionId && !topicFocus) {
+      setFocusOptions((contentJson.focusOptions as PracticeFocusOption[]) || []);
       setLoading(false);
       return;
     }
@@ -153,7 +164,7 @@ function FlashcardsContent() {
         console.error('Could not create flashcard session:', err);
       }
     }
-  }, [examId, profile, router, sessionId, startNew]);
+  }, [examId, profile, router, sessionId, startNew, topicFocus]);
 
   useEffect(() => {
     if (profile) loadData();
@@ -279,6 +290,18 @@ function FlashcardsContent() {
           </Button>
         </div>
       </div>
+    );
+  }
+
+  if (focusOptions && examId) {
+    return (
+      <PracticeFocusSelector
+        basePath="/dashboard/practice/flashcards"
+        examId={examId}
+        title="Choose Areas to Study"
+        description="Choose all areas or focus this flashcard session on one topic before starting."
+        options={focusOptions}
+      />
     );
   }
 

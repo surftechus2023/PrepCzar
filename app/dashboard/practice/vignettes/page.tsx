@@ -13,6 +13,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
 import { authenticatedFetch } from '@/lib/api';
+import { PracticeFocusSelector, type PracticeFocusOption } from '@/components/dashboard/PracticeFocusSelector';
 import type { CaseVignette, Exam, PracticeSession } from '@/types/database';
 
 export default function VignettesPage() {
@@ -36,6 +37,7 @@ function VignettesContent() {
   const examId = searchParams.get('exam');
   const sessionId = searchParams.get('session');
   const startNew = searchParams.get('start') === 'new';
+  const topicFocus = searchParams.get('topic');
   const router = useRouter();
   const { profile } = useAuth();
 
@@ -51,6 +53,7 @@ function VignettesContent() {
   const [showIdeal, setShowIdeal] = useState(false);
   const [session, setSession] = useState<PracticeSession | null>(null);
   const [resumableSession, setResumableSession] = useState<PracticeSession | null>(null);
+  const [focusOptions, setFocusOptions] = useState<PracticeFocusOption[] | null>(null);
 
   useEffect(() => {
     if (profile?.preferred_language) setLang((profile.preferred_language as any) || 'en');
@@ -60,6 +63,7 @@ function VignettesContent() {
     setLoading(true);
     setLoadError('');
     setResumableSession(null);
+    setFocusOptions(null);
     setCompleted(false);
     setVignettes([]);
     setAnswer('');
@@ -105,7 +109,8 @@ function VignettesContent() {
     }
 
     const sessionParam = sessionId ? `&session=${sessionId}` : '';
-    const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=vignettes&exam=${targetExamId}${sessionParam}`);
+    const topicParam = topicFocus ? `&topic=${topicFocus}` : '';
+    const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=vignettes&exam=${targetExamId}${sessionParam}${topicParam}`);
     const contentJson = await contentRes.json();
 
     if (!contentRes.ok) {
@@ -121,6 +126,12 @@ function VignettesContent() {
 
     if (!sessionId && !startNew && contentJson.incompleteSession) {
       setResumableSession(contentJson.incompleteSession as PracticeSession);
+      setLoading(false);
+      return;
+    }
+
+    if (!sessionId && !topicFocus) {
+      setFocusOptions((contentJson.focusOptions as PracticeFocusOption[]) || []);
       setLoading(false);
       return;
     }
@@ -150,7 +161,7 @@ function VignettesContent() {
         console.error('Could not create vignette session:', err);
       }
     }
-  }, [examId, profile, router, sessionId, startNew]);
+  }, [examId, profile, router, sessionId, startNew, topicFocus]);
 
   useEffect(() => {
     if (profile) loadData();
@@ -247,6 +258,18 @@ function VignettesContent() {
           </Button>
         </div>
       </div>
+    );
+  }
+
+  if (focusOptions && examId) {
+    return (
+      <PracticeFocusSelector
+        basePath="/dashboard/practice/vignettes"
+        examId={examId}
+        title="Choose Areas to Study"
+        description="Choose all areas or focus this case vignette session on one topic before starting."
+        options={focusOptions}
+      />
     );
   }
 

@@ -14,6 +14,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { authenticatedFetch } from '@/lib/api';
 import { useVoice } from '@/hooks/useVoice';
 import { matchVoiceAnswer, type VoiceOption } from '@/lib/voice-answer';
+import { PracticeFocusSelector, type PracticeFocusOption } from '@/components/dashboard/PracticeFocusSelector';
 import type { Question, Exam, PracticeSession } from '@/types/database';
 import Link from 'next/link';
 
@@ -44,6 +45,7 @@ function MCQPracticeContent() {
   const sessionId = searchParams.get('session');
   const voiceMode = searchParams.get('voice') === '1';
   const startNew = searchParams.get('start') === 'new';
+  const topicFocus = searchParams.get('topic');
   const router = useRouter();
   const { profile } = useAuth();
 
@@ -54,6 +56,7 @@ function MCQPracticeContent() {
   const [showRationale, setShowRationale] = useState(false);
   const [session, setSession] = useState<PracticeSession | null>(null);
   const [resumableSession, setResumableSession] = useState<PracticeSession | null>(null);
+  const [focusOptions, setFocusOptions] = useState<PracticeFocusOption[] | null>(null);
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -97,6 +100,7 @@ function MCQPracticeContent() {
     setLoading(true);
     setLoadError('');
     setResumableSession(null);
+    setFocusOptions(null);
     setCompleted(false);
     setQuestions([]);
     setAnswers({});
@@ -153,7 +157,8 @@ function MCQPracticeContent() {
     setActiveTrackId(targetTrackId);
 
     const sessionParam = sessionId ? `&session=${sessionId}` : '';
-    const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=mcq&exam=${targetTrackId}${sessionParam}`);
+    const topicParam = topicFocus ? `&topic=${topicFocus}` : '';
+    const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=mcq&exam=${targetTrackId}${sessionParam}${topicParam}`);
     const contentJson = await contentRes.json();
 
     if (!contentRes.ok) {
@@ -169,6 +174,12 @@ function MCQPracticeContent() {
 
     if (!sessionId && !startNew && contentJson.incompleteSession) {
       setResumableSession(contentJson.incompleteSession as PracticeSession);
+      setLoading(false);
+      return;
+    }
+
+    if (!sessionId && !topicFocus) {
+      setFocusOptions((contentJson.focusOptions as PracticeFocusOption[]) || []);
       setLoading(false);
       return;
     }
@@ -192,7 +203,7 @@ function MCQPracticeContent() {
     }
 
     setLoading(false);
-  }, [examId, profile, router, sessionId, startNew, voiceMode]);
+  }, [examId, profile, router, sessionId, startNew, topicFocus, voiceMode]);
 
   useEffect(() => {
     if (profile) {
@@ -488,6 +499,18 @@ function MCQPracticeContent() {
           </Button>
         </div>
       </div>
+    );
+  }
+
+  if (focusOptions && activeTrackId) {
+    return (
+      <PracticeFocusSelector
+        basePath="/dashboard/practice/mcq"
+        examId={activeTrackId}
+        title="Choose Areas to Study"
+        description="Choose all areas or focus this MCQ session on one topic before starting."
+        options={focusOptions}
+      />
     );
   }
 
