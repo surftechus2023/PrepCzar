@@ -266,8 +266,8 @@ function VignettesContent() {
       <PracticeFocusSelector
         basePath="/dashboard/practice/vignettes"
         examId={examId}
-        title="Choose Areas to Study"
-        description="Choose all areas or focus this case vignette session on one topic before starting."
+        title="Choose Exam Topic"
+        description="Choose all syllabus topics or select one exam topic for this new case vignette session."
         options={focusOptions}
       />
     );

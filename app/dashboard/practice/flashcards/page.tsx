@@ -298,8 +298,8 @@ function FlashcardsContent() {
       <PracticeFocusSelector
         basePath="/dashboard/practice/flashcards"
         examId={examId}
-        title="Choose Areas to Study"
-        description="Choose all areas or focus this flashcard session on one topic before starting."
+        title="Choose Exam Topic"
+        description="Choose all syllabus topics or select one exam topic for this new flashcard session."
         options={focusOptions}
       />
     );

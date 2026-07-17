@@ -507,8 +507,8 @@ function MCQPracticeContent() {
       <PracticeFocusSelector
         basePath="/dashboard/practice/mcq"
         examId={activeTrackId}
-        title="Choose Areas to Study"
-        description="Choose all areas or focus this MCQ session on one topic before starting."
+        title="Choose Exam Topic"
+        description="Choose all syllabus topics or select one exam topic for this new MCQ session."
         options={focusOptions}
       />
     );
