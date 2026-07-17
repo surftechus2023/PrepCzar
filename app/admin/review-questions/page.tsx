@@ -60,7 +60,9 @@ type EditState = Pick<
 export default function ReviewQuestionsPage() {
   const [questions, setQuestions] = useState<ReviewQuestion[]>([]);
   const [tracks, setTracks] = useState<ExamTrack[]>([]);
+  const [topics, setTopics] = useState<Pick<Topic, 'id' | 'exam_track_id' | 'title'>[]>([]);
   const [filterTrack, setFilterTrack] = useState('');
+  const [filterTopic, setFilterTopic] = useState('');
   const [sortBy, setSortBy] = useState<'created' | 'track'>('created');
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -80,6 +82,7 @@ export default function ReviewQuestionsPage() {
     } else {
       setQuestions((data.questions as ReviewQuestion[]) || []);
       setTracks((data.tracks as ExamTrack[]) || []);
+      setTopics((data.topics as Pick<Topic, 'id' | 'exam_track_id' | 'title'>[]) || []);
     }
     setLoading(false);
   }, [toast]);
@@ -314,7 +317,7 @@ export default function ReviewQuestionsPage() {
   }
 
   const visibleQuestions = questions
-    .filter((question) => !filterTrack || question.exam_track_id === filterTrack)
+    .filter((question) => (!filterTrack || question.exam_track_id === filterTrack) && (!filterTopic || question.topic_id === filterTopic))
     .sort((left, right) => {
       if (sortBy === 'track') {
         const leftTrack = (left.exam_track as any)?.name || '';
@@ -341,6 +344,18 @@ export default function ReviewQuestionsPage() {
           {tracks.map((track) => (
             <option key={track.id} value={track.id}>{track.name}</option>
           ))}
+        </select>
+        <select
+          value={filterTopic}
+          onChange={(event) => setFilterTopic(event.target.value)}
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+        >
+          <option value="">All Exam Topics</option>
+          {topics
+            .filter((topic) => !filterTrack || topic.exam_track_id === filterTrack)
+            .map((topic) => (
+              <option key={topic.id} value={topic.id}>{topic.title}</option>
+            ))}
         </select>
         <select
           value={sortBy}

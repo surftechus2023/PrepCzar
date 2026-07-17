@@ -9,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { authenticatedFetch } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import type { CaseVignette, ExamTrack } from '@/types/database';
+import type { CaseVignette, ExamTrack, Topic } from '@/types/database';
 
 interface VignetteWithMeta extends CaseVignette {
   exam_track?: ExamTrack;
@@ -18,9 +18,11 @@ interface VignetteWithMeta extends CaseVignette {
 export default function AdminVignettesPage() {
   const [vignettes, setVignettes] = useState<VignetteWithMeta[]>([]);
   const [tracks, setTracks] = useState<ExamTrack[]>([]);
+  const [topics, setTopics] = useState<Pick<Topic, 'id' | 'exam_track_id' | 'title'>[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterTrack, setFilterTrack] = useState('');
+  const [filterTopic, setFilterTopic] = useState('');
   const [filterReviewed, setFilterReviewed] = useState('all');
   const [selected, setSelected] = useState<VignetteWithMeta | null>(null);
   const { toast } = useToast();
@@ -39,6 +41,7 @@ export default function AdminVignettesPage() {
 
     setVignettes((data.vignettes as VignetteWithMeta[]) || []);
     setTracks(data.tracks || []);
+    setTopics(data.topics || []);
     setLoading(false);
   }
 
@@ -89,10 +92,11 @@ export default function AdminVignettesPage() {
   const filtered = vignettes.filter(v => {
     const matchSearch = !search || v.case_en.toLowerCase().includes(search.toLowerCase());
     const matchTrack = !filterTrack || v.exam_track_id === filterTrack;
+    const matchTopic = !filterTopic || v.topic_id === filterTopic;
     const matchReviewed = filterReviewed === 'all' ||
       (filterReviewed === 'reviewed' && v.reviewed) ||
       (filterReviewed === 'pending' && !v.reviewed);
-    return matchSearch && matchTrack && matchReviewed;
+    return matchSearch && matchTrack && matchTopic && matchReviewed;
   });
 
   return (
@@ -107,9 +111,15 @@ export default function AdminVignettesPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Search vignettes..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
-        <select value={filterTrack} onChange={(e) => setFilterTrack(e.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+        <select value={filterTrack} onChange={(e) => { setFilterTrack(e.target.value); setFilterTopic(''); }} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
           <option value="">All Tracks</option>
           {tracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <select value={filterTopic} onChange={(e) => setFilterTopic(e.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+          <option value="">All Exam Topics</option>
+          {topics
+            .filter((topic) => !filterTrack || topic.exam_track_id === filterTrack)
+            .map((topic) => <option key={topic.id} value={topic.id}>{topic.title}</option>)}
         </select>
         <select value={filterReviewed} onChange={(e) => setFilterReviewed(e.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
           <option value="all">All Review Statuses</option>

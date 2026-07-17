@@ -26,9 +26,11 @@ interface QuestionWithMeta extends Question {
 export default function AdminQuestionsPage() {
   const [questions, setQuestions] = useState<QuestionWithMeta[]>([]);
   const [tracks, setTracks] = useState<ExamTrack[]>([]);
+  const [topics, setTopics] = useState<Pick<Topic, 'id' | 'exam_track_id' | 'title'>[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterTrack, setFilterTrack] = useState('');
+  const [filterTopic, setFilterTopic] = useState('');
   const [filterReviewed, setFilterReviewed] = useState('all');
   const [selectedQ, setSelectedQ] = useState<QuestionWithMeta | null>(null);
   const [page, setPage] = useState(1);
@@ -53,6 +55,7 @@ export default function AdminQuestionsPage() {
     const nextQuestions = (data.questions as QuestionWithMeta[]) || [];
     setQuestions((current) => (nextPage === 1 ? nextQuestions : [...current, ...nextQuestions]));
     setTracks(data.tracks || []);
+    setTopics(data.topics || []);
     setPage(nextPage);
     setHasMore(Boolean(data.pagination?.hasMore));
     setLoading(false);
@@ -98,10 +101,11 @@ export default function AdminQuestionsPage() {
   const filtered = questions.filter(q => {
     const matchSearch = !search || q.question_en.toLowerCase().includes(search.toLowerCase());
     const matchTrack = !filterTrack || q.exam_track_id === filterTrack;
+    const matchTopic = !filterTopic || q.topic_id === filterTopic;
     const matchReviewed = filterReviewed === 'all' ||
       (filterReviewed === 'reviewed' && q.reviewed) ||
       (filterReviewed === 'pending' && !q.reviewed);
-    return matchSearch && matchTrack && matchReviewed;
+    return matchSearch && matchTrack && matchTopic && matchReviewed;
   });
 
   return (
@@ -125,11 +129,21 @@ export default function AdminQuestionsPage() {
         </div>
         <select
           value={filterTrack}
-          onChange={(e) => setFilterTrack(e.target.value)}
+          onChange={(e) => { setFilterTrack(e.target.value); setFilterTopic(''); }}
           className="h-10 rounded-md border border-input bg-background px-3 text-sm"
         >
           <option value="">All Tracks</option>
           {tracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <select
+          value={filterTopic}
+          onChange={(e) => setFilterTopic(e.target.value)}
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+        >
+          <option value="">All Exam Topics</option>
+          {topics
+            .filter((topic) => !filterTrack || topic.exam_track_id === filterTrack)
+            .map((topic) => <option key={topic.id} value={topic.id}>{topic.title}</option>)}
         </select>
         <select
           value={filterReviewed}

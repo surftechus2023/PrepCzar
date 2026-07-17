@@ -56,18 +56,27 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: questionsError.message }, { status: 500 });
     }
 
-    const { data: tracks, error: tracksError } = await supabaseAdmin
-      .from('exam_tracks')
-      .select('*')
-      .order('name');
+    const [tracksRes, topicsRes] = await Promise.all([
+      supabaseAdmin
+        .from('exam_tracks')
+        .select('*')
+        .order('name'),
+      supabaseAdmin
+        .from('topics')
+        .select('id, exam_track_id, title, display_order')
+        .order('display_order', { ascending: true })
+        .order('title', { ascending: true }),
+    ]);
 
-    if (tracksError) {
-      return NextResponse.json({ error: tracksError.message }, { status: 500 });
+    const metadataError = tracksRes.error || topicsRes.error;
+    if (metadataError) {
+      return NextResponse.json({ error: metadataError.message }, { status: 500 });
     }
 
     return NextResponse.json({
       questions: questions || [],
-      tracks: tracks || [],
+      tracks: tracksRes.data || [],
+      topics: topicsRes.data || [],
       pagination: {
         page,
         limit,

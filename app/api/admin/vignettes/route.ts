@@ -39,16 +39,21 @@ export async function GET(req: NextRequest) {
     }
 
     const supabaseAdmin = getSupabaseAdmin();
-    const [vignettesRes, tracksRes] = await Promise.all([
+    const [vignettesRes, tracksRes, topicsRes] = await Promise.all([
       supabaseAdmin
         .from('case_vignettes')
         .select('*, exam_track:exam_tracks(name)')
         .order('created_at', { ascending: false })
         .limit(200),
       supabaseAdmin.from('exam_tracks').select('*').order('name'),
+      supabaseAdmin
+        .from('topics')
+        .select('id, exam_track_id, title, display_order')
+        .order('display_order', { ascending: true })
+        .order('title', { ascending: true }),
     ]);
 
-    const error = vignettesRes.error || tracksRes.error;
+    const error = vignettesRes.error || tracksRes.error || topicsRes.error;
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
@@ -56,6 +61,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       vignettes: vignettesRes.data || [],
       tracks: tracksRes.data || [],
+      topics: topicsRes.data || [],
     });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });

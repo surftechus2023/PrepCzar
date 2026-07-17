@@ -9,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { authenticatedFetch } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
-import type { Flashcard, ExamTrack } from '@/types/database';
+import type { Flashcard, ExamTrack, Topic } from '@/types/database';
 
 interface FlashcardWithMeta extends Flashcard {
   exam_track?: ExamTrack;
@@ -18,9 +18,11 @@ interface FlashcardWithMeta extends Flashcard {
 export default function AdminFlashcardsPage() {
   const [cards, setCards] = useState<FlashcardWithMeta[]>([]);
   const [tracks, setTracks] = useState<ExamTrack[]>([]);
+  const [topics, setTopics] = useState<Pick<Topic, 'id' | 'exam_track_id' | 'title'>[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterTrack, setFilterTrack] = useState('');
+  const [filterTopic, setFilterTopic] = useState('');
   const [filterReviewed, setFilterReviewed] = useState('all');
   const [selected, setSelected] = useState<FlashcardWithMeta | null>(null);
   const { toast } = useToast();
@@ -41,6 +43,7 @@ export default function AdminFlashcardsPage() {
 
     setCards((data.flashcards as FlashcardWithMeta[]) || []);
     setTracks(data.tracks || []);
+    setTopics(data.topics || []);
     setLoading(false);
   }
 
@@ -91,10 +94,11 @@ export default function AdminFlashcardsPage() {
   const filtered = cards.filter(c => {
     const matchSearch = !search || c.front_en.toLowerCase().includes(search.toLowerCase());
     const matchTrack = !filterTrack || c.exam_track_id === filterTrack;
+    const matchTopic = !filterTopic || c.topic_id === filterTopic;
     const matchReviewed = filterReviewed === 'all' ||
       (filterReviewed === 'reviewed' && c.reviewed) ||
       (filterReviewed === 'pending' && !c.reviewed);
-    return matchSearch && matchTrack && matchReviewed;
+    return matchSearch && matchTrack && matchTopic && matchReviewed;
   });
 
   return (
@@ -111,9 +115,15 @@ export default function AdminFlashcardsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Search flashcards..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
-        <select value={filterTrack} onChange={(e) => setFilterTrack(e.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+        <select value={filterTrack} onChange={(e) => { setFilterTrack(e.target.value); setFilterTopic(''); }} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
           <option value="">All Tracks</option>
           {tracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <select value={filterTopic} onChange={(e) => setFilterTopic(e.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+          <option value="">All Exam Topics</option>
+          {topics
+            .filter((topic) => !filterTrack || topic.exam_track_id === filterTrack)
+            .map((topic) => <option key={topic.id} value={topic.id}>{topic.title}</option>)}
         </select>
         <select value={filterReviewed} onChange={(e) => setFilterReviewed(e.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
           <option value="all">All Review Statuses</option>
