@@ -94,6 +94,15 @@ function MCQPracticeContent() {
   }, [profile]);
 
   const initialize = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+    setResumableSession(null);
+    setCompleted(false);
+    setQuestions([]);
+    setAnswers({});
+    setShowRationale(false);
+    setVoiceSuggestion(null);
+
     if (!profile) {
       setLoading(false);
       return;
@@ -143,7 +152,8 @@ function MCQPracticeContent() {
 
     setActiveTrackId(targetTrackId);
 
-    const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=mcq&exam=${targetTrackId}`);
+    const sessionParam = sessionId ? `&session=${sessionId}` : '';
+    const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=mcq&exam=${targetTrackId}${sessionParam}`);
     const contentJson = await contentRes.json();
 
     if (!contentRes.ok) {

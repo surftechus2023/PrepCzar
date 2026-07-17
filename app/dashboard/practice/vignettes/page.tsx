@@ -57,6 +57,15 @@ function VignettesContent() {
   }, [profile]);
 
   const loadData = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+    setResumableSession(null);
+    setCompleted(false);
+    setVignettes([]);
+    setAnswer('');
+    setSubmitted(false);
+    setShowIdeal(false);
+
     if (!profile) {
       setLoading(false);
       return;
@@ -95,7 +104,8 @@ function VignettesContent() {
       return;
     }
 
-    const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=vignettes&exam=${targetExamId}`);
+    const sessionParam = sessionId ? `&session=${sessionId}` : '';
+    const contentRes = await authenticatedFetch(`/api/dashboard/practice-content?type=vignettes&exam=${targetExamId}${sessionParam}`);
     const contentJson = await contentRes.json();
 
     if (!contentRes.ok) {

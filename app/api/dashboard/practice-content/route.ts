@@ -65,6 +65,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const examTrackId = searchParams.get('exam');
     const contentType = searchParams.get('type');
+    const resumeSessionId = searchParams.get('session');
 
     if (!examTrackId || !isContentType(contentType)) {
       return NextResponse.json({ error: 'Exam track and content type are required' }, { status: 400 });
@@ -113,6 +114,24 @@ export async function GET(req: NextRequest) {
       .limit(1)
       .maybeSingle();
 
+    let resumeItemIds: string[] = [];
+    if (resumeSessionId) {
+      const { data: resumeSession, error: resumeSessionError } = await (supabaseAdmin as any)
+        .from('practice_sessions')
+        .select('id, user_id, exam_track_id, mode, content_item_ids')
+        .eq('id', resumeSessionId)
+        .eq('user_id', authUser.id)
+        .eq('exam_track_id', examTrackId)
+        .eq('mode', modeForType(contentType))
+        .maybeSingle();
+
+      if (resumeSessionError) return NextResponse.json({ error: resumeSessionError.message }, { status: 500 });
+      if (!resumeSession) return NextResponse.json({ error: 'Practice session not found for this content request' }, { status: 404 });
+      resumeItemIds = Array.isArray(resumeSession.content_item_ids)
+        ? resumeSession.content_item_ids.filter((id: unknown): id is string => typeof id === 'string')
+        : [];
+    }
+
     const table = TABLE_BY_TYPE[contentType];
     let contentQuery = (supabaseAdmin as any)
       .from(table)
@@ -127,22 +146,31 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const { data: content, error: contentError } = await contentQuery.limit(Math.max(limit * 3, limit));
+    if (resumeItemIds.length > 0) {
+      contentQuery = contentQuery.in('id', resumeItemIds);
+    }
+
+    const { data: content, error: contentError } = await contentQuery.limit(resumeItemIds.length || Math.max(limit * 3, limit));
     if (contentError) return NextResponse.json({ error: contentError.message }, { status: 500 });
 
     const seenIds = new Set((responsesRes.data || []).map((response: any) => response.content_item_id || response.question_id).filter(Boolean));
-    const orderedContent = ((content || []) as any[])
-      .map((item) => ({
-        ...item,
-        _seen: seenIds.has(item.id),
-        _weight: Number(item.topic?.official_weight_percent || 1),
-      }))
-      .sort((left, right) => {
-        if (left._seen !== right._seen) return left._seen ? 1 : -1;
-        return right._weight - left._weight;
-      })
-      .slice(0, limit)
-      .map(({ _seen, _weight, ...item }) => item);
+    const contentRows = ((content || []) as any[]);
+    const orderedContent = resumeItemIds.length > 0
+      ? resumeItemIds
+          .map((id) => contentRows.find((item) => item.id === id))
+          .filter(Boolean)
+      : contentRows
+          .map((item) => ({
+            ...item,
+            _seen: seenIds.has(item.id),
+            _weight: Number(item.topic?.official_weight_percent || 1),
+          }))
+          .sort((left, right) => {
+            if (left._seen !== right._seen) return left._seen ? 1 : -1;
+            return right._weight - left._weight;
+          })
+          .slice(0, limit)
+          .map(({ _seen, _weight, ...item }) => item);
 
     return NextResponse.json({
       track,
