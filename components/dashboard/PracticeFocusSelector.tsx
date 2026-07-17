@@ -59,7 +59,9 @@ export function PracticeFocusSelector({
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-semibold text-foreground">{option.title}</p>
                   {option.weight !== null && <Badge variant="outline">{option.weight}%</Badge>}
-                  <Badge variant="secondary">{option.count} item{option.count === 1 ? '' : 's'}</Badge>
+                  <Badge variant={option.count > 0 ? 'secondary' : 'outline'}>
+                    {option.count > 0 ? `${option.count} item${option.count === 1 ? '' : 's'}` : 'No approved items yet'}
+                  </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground mt-1">Focus this session on this topic or blueprint area.</p>
               </div>

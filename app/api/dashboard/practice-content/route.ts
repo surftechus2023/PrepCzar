@@ -89,9 +89,18 @@ export async function GET(req: NextRequest) {
 
     const table = TABLE_BY_TYPE[contentType];
 
+    const topicsRes = await supabaseAdmin
+      .from('topics')
+      .select('id, title, official_weight_percent, display_order')
+      .eq('exam_track_id', examTrackId)
+      .order('display_order', { ascending: true })
+      .order('title', { ascending: true });
+
+    if (topicsRes.error) return NextResponse.json({ error: topicsRes.error.message }, { status: 500 });
+
     let focusOptionsQuery = (supabaseAdmin as any)
       .from(table)
-      .select('topic_id, topic:topics(id, title, official_weight_percent)')
+      .select('topic_id')
       .eq('exam_track_id', examTrackId)
       .eq('active', true)
       .eq('reviewed', true)
@@ -106,26 +115,19 @@ export async function GET(req: NextRequest) {
     const { data: focusRows, error: focusError } = await focusOptionsQuery.limit(1000);
     if (focusError) return NextResponse.json({ error: focusError.message }, { status: 500 });
 
-    const focusMap = new Map<string, { id: string; title: string; count: number; weight: number | null }>();
+    const focusCountMap = new Map<string, number>();
     (focusRows || []).forEach((row: any) => {
       const id = row.topic_id;
       if (!id) return;
-      const topic = Array.isArray(row.topic) ? row.topic[0] : row.topic;
-      const existing = focusMap.get(id);
-      focusMap.set(id, {
-        id,
-        title: topic?.title || 'Untitled topic',
-        count: (existing?.count || 0) + 1,
-        weight: topic?.official_weight_percent ?? existing?.weight ?? null,
-      });
+      focusCountMap.set(id, (focusCountMap.get(id) || 0) + 1);
     });
 
-    const focusOptions = Array.from(focusMap.values())
-      .sort((left, right) => {
-        const leftWeight = Number(left.weight || 0);
-        const rightWeight = Number(right.weight || 0);
-        return rightWeight - leftWeight || left.title.localeCompare(right.title);
-      });
+    const focusOptions = (topicsRes.data || []).map((topic: any) => ({
+      id: topic.id,
+      title: topic.title || 'Untitled topic',
+      count: focusCountMap.get(topic.id) || 0,
+      weight: topic.official_weight_percent ?? null,
+    }));
 
     if (optionsOnly) {
       return NextResponse.json({ track, focusOptions });
