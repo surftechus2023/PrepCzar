@@ -59,6 +59,9 @@ type EditState = Pick<
 
 export default function ReviewQuestionsPage() {
   const [questions, setQuestions] = useState<ReviewQuestion[]>([]);
+  const [tracks, setTracks] = useState<ExamTrack[]>([]);
+  const [filterTrack, setFilterTrack] = useState('');
+  const [sortBy, setSortBy] = useState<'created' | 'track'>('created');
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editState, setEditState] = useState<EditState | null>(null);
@@ -76,6 +79,7 @@ export default function ReviewQuestionsPage() {
       toast({ title: 'Could not load questions', description: data.error, variant: 'destructive' });
     } else {
       setQuestions((data.questions as ReviewQuestion[]) || []);
+      setTracks((data.tracks as ExamTrack[]) || []);
     }
     setLoading(false);
   }, [toast]);
@@ -309,6 +313,17 @@ export default function ReviewQuestionsPage() {
     ].filter(([, value]) => isMissingBlueprintValue(value)).map(([label]) => label);
   }
 
+  const visibleQuestions = questions
+    .filter((question) => !filterTrack || question.exam_track_id === filterTrack)
+    .sort((left, right) => {
+      if (sortBy === 'track') {
+        const leftTrack = (left.exam_track as any)?.name || '';
+        const rightTrack = (right.exam_track as any)?.name || '';
+        return leftTrack.localeCompare(rightTrack) || String(right.created_at || '').localeCompare(String(left.created_at || ''));
+      }
+      return String(right.created_at || '').localeCompare(String(left.created_at || ''));
+    });
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="mb-6">
@@ -316,17 +331,38 @@ export default function ReviewQuestionsPage() {
         <p className="text-sm text-muted-foreground mt-1">Review generated and imported MCQs before students can see them.</p>
       </div>
 
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row">
+        <select
+          value={filterTrack}
+          onChange={(event) => setFilterTrack(event.target.value)}
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+        >
+          <option value="">All Exam Tracks</option>
+          {tracks.map((track) => (
+            <option key={track.id} value={track.id}>{track.name}</option>
+          ))}
+        </select>
+        <select
+          value={sortBy}
+          onChange={(event) => setSortBy(event.target.value as 'created' | 'track')}
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+        >
+          <option value="created">Newest First</option>
+          <option value="track">Sort by Exam Track</option>
+        </select>
+      </div>
+
       {loading ? (
         <div className="flex justify-center py-16">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
-      ) : questions.length === 0 ? (
+      ) : visibleQuestions.length === 0 ? (
         <Card>
-          <CardContent className="p-8 text-center text-muted-foreground">No generated or imported questions are pending review.</CardContent>
+          <CardContent className="p-8 text-center text-muted-foreground">No generated or imported questions match this review filter.</CardContent>
         </Card>
       ) : (
         <div className="space-y-4">
-          {questions.map((question) => {
+          {visibleQuestions.map((question) => {
             const isEditing = editingId === question.id && editState;
             const optionKeys = ['a', 'b', 'c', 'd'] as const;
             const missingBlueprintMetadata = missingBlueprintFields(question);

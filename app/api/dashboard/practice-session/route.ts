@@ -97,6 +97,22 @@ export async function PUT(req: NextRequest) {
 
     const body = await req.json();
     const { sessionId, questionId, selectedAnswer, isCorrect } = body;
+    if (sessionId && body.progressOnly === true && typeof body.currentIndex === 'number') {
+      const supabaseAdmin = getSupabaseAdmin();
+      const session = await getUserSession(authUser.id, sessionId);
+      if (!session) return NextResponse.json({ error: 'Practice session not found' }, { status: 404 });
+      if (session.exam_track_id) await assertActiveExamTrackAccess(supabaseAdmin, authUser.id, session.exam_track_id);
+
+      const { error } = await (supabaseAdmin as any)
+        .from('practice_sessions')
+        .update({ current_index: body.currentIndex })
+        .eq('id', sessionId)
+        .eq('user_id', authUser.id);
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true });
+    }
+
     if (!sessionId || !questionId || !isSelectedAnswer(selectedAnswer) || typeof isCorrect !== 'boolean') {
       return NextResponse.json({ error: 'Session, question, answer, and correctness are required' }, { status: 400 });
     }

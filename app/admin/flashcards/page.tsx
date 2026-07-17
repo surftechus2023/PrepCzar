@@ -21,6 +21,7 @@ export default function AdminFlashcardsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterTrack, setFilterTrack] = useState('');
+  const [filterReviewed, setFilterReviewed] = useState('all');
   const [selected, setSelected] = useState<FlashcardWithMeta | null>(null);
   const { toast } = useToast();
 
@@ -90,7 +91,10 @@ export default function AdminFlashcardsPage() {
   const filtered = cards.filter(c => {
     const matchSearch = !search || c.front_en.toLowerCase().includes(search.toLowerCase());
     const matchTrack = !filterTrack || c.exam_track_id === filterTrack;
-    return matchSearch && matchTrack;
+    const matchReviewed = filterReviewed === 'all' ||
+      (filterReviewed === 'reviewed' && c.reviewed) ||
+      (filterReviewed === 'pending' && !c.reviewed);
+    return matchSearch && matchTrack && matchReviewed;
   });
 
   return (
@@ -110,6 +114,11 @@ export default function AdminFlashcardsPage() {
         <select value={filterTrack} onChange={(e) => setFilterTrack(e.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
           <option value="">All Tracks</option>
           {tracks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+        <select value={filterReviewed} onChange={(e) => setFilterReviewed(e.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+          <option value="all">All Review Statuses</option>
+          <option value="pending">Pending Review</option>
+          <option value="reviewed">Reviewed</option>
         </select>
       </div>
 

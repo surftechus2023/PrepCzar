@@ -43,6 +43,7 @@ function MCQPracticeContent() {
   const examId = searchParams.get('exam');
   const sessionId = searchParams.get('session');
   const voiceMode = searchParams.get('voice') === '1';
+  const startNew = searchParams.get('start') === 'new';
   const router = useRouter();
   const { profile } = useAuth();
 
@@ -52,6 +53,7 @@ function MCQPracticeContent() {
   const [answers, setAnswers] = useState<AnswerMap>({});
   const [showRationale, setShowRationale] = useState(false);
   const [session, setSession] = useState<PracticeSession | null>(null);
+  const [resumableSession, setResumableSession] = useState<PracticeSession | null>(null);
   const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -155,6 +157,12 @@ function MCQPracticeContent() {
       setExam({ id: contentJson.track.id, name: contentJson.track.name } as any);
     }
 
+    if (!sessionId && !startNew && contentJson.incompleteSession) {
+      setResumableSession(contentJson.incompleteSession as PracticeSession);
+      setLoading(false);
+      return;
+    }
+
     if (contentJson.content?.length > 0) {
       const existingIds = (resumedSession as any)?.content_item_ids || [];
       const byId = new Map((contentJson.content as Question[]).map((question) => [question.id, question]));
@@ -174,7 +182,7 @@ function MCQPracticeContent() {
     }
 
     setLoading(false);
-  }, [examId, profile, router, sessionId, voiceMode]);
+  }, [examId, profile, router, sessionId, startNew, voiceMode]);
 
   useEffect(() => {
     if (profile) {
@@ -444,6 +452,31 @@ function MCQPracticeContent() {
         <h2 className="text-2xl font-bold mb-4">Select an Exam</h2>
         <p className="text-muted-foreground mb-6">Please select an exam from your dashboard.</p>
         <Button asChild><Link href="/dashboard">Back to Dashboard</Link></Button>
+      </div>
+    );
+  }
+
+  if (resumableSession && activeTrackId) {
+    const voiceParam = voiceMode ? '&voice=1' : '';
+    return (
+      <div className="p-6 max-w-2xl mx-auto text-center py-24">
+        <BookOpenIcon className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4" />
+        <h2 className="text-2xl font-bold mb-4">Continue Previous Session?</h2>
+        <p className="text-muted-foreground mb-6">
+          You have an unfinished MCQ session. Continue where you left off or start a fresh scrambled set.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <Button asChild>
+            <Link href={`/dashboard/practice/mcq?session=${resumableSession.id}${voiceParam}`}>
+              Continue Session
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href={`/dashboard/practice/mcq?exam=${activeTrackId}&start=new${voiceParam}`}>
+              Start New Session
+            </Link>
+          </Button>
+        </div>
       </div>
     );
   }

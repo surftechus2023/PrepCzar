@@ -33,6 +33,8 @@ function FlashcardsLoading() {
 function FlashcardsContent() {
   const searchParams = useSearchParams();
   const examId = searchParams.get('exam');
+  const sessionId = searchParams.get('session');
+  const startNew = searchParams.get('start') === 'new';
   const router = useRouter();
   const { profile } = useAuth();
 
@@ -47,6 +49,7 @@ function FlashcardsContent() {
   const [completed, setCompleted] = useState(false);
   const [lang, setLang] = useState<'en' | 'es' | 'fr'>('en');
   const [session, setSession] = useState<PracticeSession | null>(null);
+  const [resumableSession, setResumableSession] = useState<PracticeSession | null>(null);
 
   const { voiceEnabled, speak } = useVoice();
 
@@ -63,6 +66,24 @@ function FlashcardsContent() {
     }
 
     let targetExamId = examId;
+    let resumedSession: PracticeSession | null = null;
+
+    if (sessionId) {
+      const sessionRes = await authenticatedFetch(`/api/dashboard/practice-session?sessionId=${sessionId}`);
+      const sessionJson = await sessionRes.json();
+      const sess = sessionRes.ok ? sessionJson.session as PracticeSession | null : null;
+      if (!sess) {
+        setLoadError(sessionJson.error || 'Flashcard session not found.');
+        setLoading(false);
+        return;
+      }
+      resumedSession = sess;
+      setSession(sess);
+      targetExamId = sess.exam_track_id || sess.exam_id;
+      if (sess.completed) setCompleted(true);
+      if (typeof (sess as any).current_index === 'number') setCurrentIdx((sess as any).current_index);
+    }
+
     if (!targetExamId) {
       const accessRes = await authenticatedFetch('/api/dashboard/access');
       const accessJson = await accessRes.json();
@@ -91,13 +112,23 @@ function FlashcardsContent() {
       setExam({ id: contentJson.track.id, name: contentJson.track.name } as any);
     }
 
+    if (!sessionId && !startNew && contentJson.incompleteSession) {
+      setResumableSession(contentJson.incompleteSession as PracticeSession);
+      setLoading(false);
+      return;
+    }
+
     setLoading(false);
 
     if (contentJson.content?.length > 0) {
-      const orderedCards = [...contentJson.content].sort(() => Math.random() - 0.5);
+      const existingIds = (resumedSession as any)?.content_item_ids || [];
+      const byId = new Map((contentJson.content as Flashcard[]).map((card) => [card.id, card]));
+      const orderedCards = Array.isArray(existingIds) && existingIds.length
+        ? existingIds.map((id: string) => byId.get(id)).filter(Boolean) as Flashcard[]
+        : [...contentJson.content].sort(() => Math.random() - 0.5);
       setFlashcards(orderedCards);
 
-      try {
+      if (!sessionId) try {
         const sessionRes = await authenticatedFetch('/api/dashboard/practice-session', {
           method: 'POST',
           body: JSON.stringify({
@@ -112,7 +143,7 @@ function FlashcardsContent() {
         console.error('Could not create flashcard session:', err);
       }
     }
-  }, [examId, profile, router]);
+  }, [examId, profile, router, sessionId, startNew]);
 
   useEffect(() => {
     if (profile) loadData();
@@ -169,6 +200,16 @@ function FlashcardsContent() {
     }
 
     if (currentIdx < flashcards.length - 1) {
+      if (session) {
+        await authenticatedFetch('/api/dashboard/practice-session', {
+          method: 'PUT',
+          body: JSON.stringify({
+            sessionId: session.id,
+            progressOnly: true,
+            currentIndex: currentIdx + 1,
+          }),
+        });
+      }
       setTimeout(() => setCurrentIdx(currentIdx + 1), 200);
     } else {
       const total = flashcards.length;
@@ -191,12 +232,7 @@ function FlashcardsContent() {
   }
 
   function restart() {
-    setCurrentIdx(0);
-    setFlipped(false);
-    setKnown(new Set());
-    setUnknown(new Set());
-    setCompleted(false);
-    setFlashcards([...flashcards].sort(() => Math.random() - 0.5));
+    router.push(`/dashboard/practice/flashcards?exam=${session?.exam_track_id || session?.exam_id || examId}&start=new`);
   }
 
   if (loading) {
@@ -213,6 +249,25 @@ function FlashcardsContent() {
         <h2 className="text-2xl font-bold mb-4">Could Not Load Flashcards</h2>
         <p className="text-muted-foreground mb-6">{loadError}</p>
         <Button asChild><Link href="/dashboard">Back to Dashboard</Link></Button>
+      </div>
+    );
+  }
+
+  if (resumableSession && examId) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto text-center py-24">
+        <h2 className="text-2xl font-bold mb-4">Continue Previous Flashcard Session?</h2>
+        <p className="text-muted-foreground mb-6">
+          You have an unfinished flashcard session. Continue where you left off or start a fresh scrambled set.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <Button asChild>
+            <Link href={`/dashboard/practice/flashcards?session=${resumableSession.id}`}>Continue Session</Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href={`/dashboard/practice/flashcards?exam=${examId}&start=new`}>Start New Session</Link>
+          </Button>
+        </div>
       </div>
     );
   }

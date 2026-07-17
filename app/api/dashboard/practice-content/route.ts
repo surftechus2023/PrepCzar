@@ -41,7 +41,7 @@ const SELECT_BY_TYPE: Record<ContentType, string> = {
     'id, exam_track_id, topic_id, subtopic_id, difficulty',
     'case_en, case_es, case_fr, prompt_en, prompt_es, prompt_fr',
     'ideal_answer_en, ideal_answer_es, ideal_answer_fr, coaching_feedback_en, coaching_feedback_es, coaching_feedback_fr',
-    'rubric',
+    'scoring_rubric',
     'topic:topics(id, title, official_weight_percent)',
     'subtopic_record:subtopics(id, title)',
   ].join(', '),

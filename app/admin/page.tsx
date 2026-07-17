@@ -114,9 +114,9 @@ export default function AdminOverviewPage() {
               { label: 'AI Model Settings', href: '/admin/ai-settings', desc: 'Configure models, provider settings, and AI cost controls' },
               { label: 'Import / Manual Authoring', href: '/admin/content-import', desc: 'Import files, paste text, or manually author drafts' },
               { label: 'Manage Questions', href: '/admin/questions', desc: 'Review, edit and publish questions' },
-              { label: 'Integrity Review', href: '/admin/review-questions', desc: 'Validate, score, flag and publish generated MCQs' },
-              { label: 'Manage Flashcards', href: '/admin/flashcards', desc: 'Add and edit flashcard content' },
-              { label: 'Manage Vignettes', href: '/admin/vignettes', desc: 'Manage clinical case scenarios' },
+              { label: 'MCQ Integrity Review', href: '/admin/review-questions', desc: 'Validate, score, flag and publish generated MCQs' },
+              { label: 'Review Flashcards', href: '/admin/flashcards', desc: 'Filter, preview, mark reviewed, and activate flashcards' },
+              { label: 'Review Vignettes', href: '/admin/vignettes', desc: 'Filter, preview, mark reviewed, and activate case vignettes' },
               { label: 'Student Analytics', href: '/admin/analytics', desc: 'Review attempts, scores and exam readiness' },
             ].map((action) => (
               <Link
@@ -141,7 +141,7 @@ export default function AdminOverviewPage() {
           <CardContent>
             <div className="space-y-3 text-sm text-muted-foreground">
               <p>• Use Generate Content to create questions, flashcards, and vignettes.</p>
-              <p>• Review generated items in their content areas before students see them.</p>
+              <p>• Review MCQs in Integrity Review; review flashcards and vignettes in their content pages before students see them.</p>
               <p>• Set <code className="bg-secondary px-1 rounded">active: true</code> and <code className="bg-secondary px-1 rounded">reviewed: true</code> to publish.</p>
               <p>• Exams define categories, tracks, and topics used by generated content.</p>
               <p>• Analytics shows student attempts, scores, readiness, and weak areas.</p>

@@ -34,6 +34,8 @@ function VignettesLoading() {
 function VignettesContent() {
   const searchParams = useSearchParams();
   const examId = searchParams.get('exam');
+  const sessionId = searchParams.get('session');
+  const startNew = searchParams.get('start') === 'new';
   const router = useRouter();
   const { profile } = useAuth();
 
@@ -48,6 +50,7 @@ function VignettesContent() {
   const [lang, setLang] = useState<'en' | 'es' | 'fr'>('en');
   const [showIdeal, setShowIdeal] = useState(false);
   const [session, setSession] = useState<PracticeSession | null>(null);
+  const [resumableSession, setResumableSession] = useState<PracticeSession | null>(null);
 
   useEffect(() => {
     if (profile?.preferred_language) setLang((profile.preferred_language as any) || 'en');
@@ -60,6 +63,24 @@ function VignettesContent() {
     }
 
     let targetExamId = examId;
+    let resumedSession: PracticeSession | null = null;
+
+    if (sessionId) {
+      const sessionRes = await authenticatedFetch(`/api/dashboard/practice-session?sessionId=${sessionId}`);
+      const sessionJson = await sessionRes.json();
+      const sess = sessionRes.ok ? sessionJson.session as PracticeSession | null : null;
+      if (!sess) {
+        setLoadError(sessionJson.error || 'Vignette session not found.');
+        setLoading(false);
+        return;
+      }
+      resumedSession = sess;
+      setSession(sess);
+      targetExamId = sess.exam_track_id || sess.exam_id;
+      if (sess.completed) setCompleted(true);
+      if (typeof (sess as any).current_index === 'number') setCurrentIdx((sess as any).current_index);
+    }
+
     if (!targetExamId) {
       const accessRes = await authenticatedFetch('/api/dashboard/access');
       const accessJson = await accessRes.json();
@@ -88,13 +109,23 @@ function VignettesContent() {
       setExam({ id: contentJson.track.id, name: contentJson.track.name } as any);
     }
 
+    if (!sessionId && !startNew && contentJson.incompleteSession) {
+      setResumableSession(contentJson.incompleteSession as PracticeSession);
+      setLoading(false);
+      return;
+    }
+
     setLoading(false);
 
     if (contentJson.content?.length > 0) {
-      const orderedVignettes = [...contentJson.content].sort(() => Math.random() - 0.5);
+      const existingIds = (resumedSession as any)?.content_item_ids || [];
+      const byId = new Map((contentJson.content as CaseVignette[]).map((vignette) => [vignette.id, vignette]));
+      const orderedVignettes = Array.isArray(existingIds) && existingIds.length
+        ? existingIds.map((id: string) => byId.get(id)).filter(Boolean) as CaseVignette[]
+        : [...contentJson.content].sort(() => Math.random() - 0.5);
       setVignettes(orderedVignettes);
 
-      try {
+      if (!sessionId) try {
         const sessionRes = await authenticatedFetch('/api/dashboard/practice-session', {
           method: 'POST',
           body: JSON.stringify({
@@ -109,7 +140,7 @@ function VignettesContent() {
         console.error('Could not create vignette session:', err);
       }
     }
-  }, [examId, profile, router]);
+  }, [examId, profile, router, sessionId, startNew]);
 
   useEffect(() => {
     if (profile) loadData();
@@ -144,6 +175,16 @@ function VignettesContent() {
     setSubmitted(false);
     setShowIdeal(false);
     if (currentIdx < vignettes.length - 1) {
+      if (session) {
+        await authenticatedFetch('/api/dashboard/practice-session', {
+          method: 'PUT',
+          body: JSON.stringify({
+            sessionId: session.id,
+            progressOnly: true,
+            currentIndex: currentIdx + 1,
+          }),
+        });
+      }
       setCurrentIdx(currentIdx + 1);
     } else {
       if (session && profile) {
@@ -179,6 +220,26 @@ function VignettesContent() {
     );
   }
 
+  if (resumableSession && examId) {
+    return (
+      <div className="p-6 max-w-2xl mx-auto text-center py-24">
+        <BookOpen className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4" />
+        <h2 className="text-2xl font-bold mb-4">Continue Previous Vignette Session?</h2>
+        <p className="text-muted-foreground mb-6">
+          You have an unfinished case vignette session. Continue where you left off or start a fresh scrambled set.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <Button asChild>
+            <Link href={`/dashboard/practice/vignettes?session=${resumableSession.id}`}>Continue Session</Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href={`/dashboard/practice/vignettes?exam=${examId}&start=new`}>Start New Session</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (completed) {
     return (
       <div className="p-6 max-w-2xl mx-auto text-center py-12">
@@ -191,7 +252,7 @@ function VignettesContent() {
           <Button variant="outline" asChild>
             <Link href="/dashboard"><ArrowLeft className="w-4 h-4 mr-2" />Dashboard</Link>
           </Button>
-          <Button onClick={() => { setCurrentIdx(0); setCompleted(false); setAnswer(''); setSubmitted(false); }}>
+          <Button onClick={() => router.push(`/dashboard/practice/vignettes?exam=${session?.exam_track_id || session?.exam_id || examId}&start=new`)}>
             <RefreshCw className="w-4 h-4 mr-2" />New Session
           </Button>
         </div>
