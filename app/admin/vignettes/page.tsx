@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, CheckCircle, XCircle, Trash2, Loader2, Eye } from 'lucide-react';
+import { Search, CheckCircle, XCircle, Trash2, Loader2, Eye, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -25,6 +25,7 @@ export default function AdminVignettesPage() {
   const [filterTopic, setFilterTopic] = useState('');
   const [filterReviewed, setFilterReviewed] = useState('all');
   const [selected, setSelected] = useState<VignetteWithMeta | null>(null);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => { loadData(); }, []);
@@ -75,6 +76,27 @@ export default function AdminVignettesPage() {
     if (updated) applyUpdatedVignette(updated);
   }
 
+  async function runAiReview(v: VignetteWithMeta) {
+    setReviewingId(v.id);
+    const res = await authenticatedFetch('/api/admin/review-vignette-integrity', {
+      method: 'POST',
+      body: JSON.stringify({ vignette_id: v.id }),
+    });
+    const data = await res.json();
+    setReviewingId(null);
+
+    if (!res.ok) {
+      toast({ title: 'AI review failed', description: data.error, variant: 'destructive' });
+      return;
+    }
+
+    applyUpdatedVignette(data.vignette as VignetteWithMeta);
+    toast({
+      title: 'AI review complete',
+      description: `Status: ${data.result.integrity_status}; score: ${data.result.integrity_score}`,
+    });
+  }
+
   async function deleteVignette(id: string) {
     if (!confirm('Delete this vignette?')) return;
     const res = await authenticatedFetch(`/api/admin/vignettes?id=${id}`, { method: 'DELETE' });
@@ -98,6 +120,15 @@ export default function AdminVignettesPage() {
       (filterReviewed === 'pending' && !v.reviewed);
     return matchSearch && matchTrack && matchTopic && matchReviewed;
   });
+
+  function integrityBadge(v: VignetteWithMeta) {
+    const status = v.integrity_status || 'pending';
+    if (status === 'passed') return <Badge className="text-xs bg-emerald-100 text-emerald-700 border-emerald-300">AI Passed {v.integrity_score}</Badge>;
+    if (status === 'needs_metadata') return <Badge className="text-xs bg-purple-100 text-purple-700 border-purple-300">Needs Metadata</Badge>;
+    if (status === 'needs_improvement') return <Badge className="text-xs bg-orange-100 text-orange-700 border-orange-300">Needs Improvement {v.integrity_score}</Badge>;
+    if (status === 'failed' || status === 'rejected') return <Badge className="text-xs bg-red-100 text-red-700 border-red-300">{status}</Badge>;
+    return <Badge variant="secondary" className="text-xs">AI Pending</Badge>;
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -149,6 +180,7 @@ export default function AdminVignettesPage() {
                       ) : (
                         <Badge variant="secondary" className="text-xs">Inactive</Badge>
                       )}
+                      {integrityBadge(v)}
                     </div>
                     <p className="text-sm text-foreground line-clamp-2">{v.case_en}</p>
                   </div>
@@ -173,6 +205,15 @@ export default function AdminVignettesPage() {
                     >
                       {v.reviewed ? <CheckCircle className="w-3.5 h-3.5 mr-1.5" /> : <XCircle className="w-3.5 h-3.5 mr-1.5 text-amber-500" />}
                       {v.reviewed ? 'Reviewed' : 'Review'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={reviewingId === v.id}
+                      onClick={() => runAiReview(v)}
+                    >
+                      {reviewingId === v.id ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 mr-1.5" />}
+                      AI Review
                     </Button>
                     <Button variant="ghost" size="icon" className="w-8 h-8 text-destructive" onClick={() => deleteVignette(v.id)}>
                       <Trash2 className="w-3.5 h-3.5" />
@@ -206,6 +247,25 @@ export default function AdminVignettesPage() {
                 <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Coaching Feedback</p>
                 <p className="text-sm text-muted-foreground">{selected.coaching_feedback_en}</p>
               </div>
+              <div className="p-4 border border-border rounded-lg space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {integrityBadge(selected)}
+                  {selected.reviewed_by_ai && <Badge variant="secondary">Model: {selected.ai_review_model || 'Unknown'}</Badge>}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Blueprint {selected.blueprint_alignment_score || 0} · Difficulty {selected.difficulty_quality_score || 0} · Content {selected.content_quality_score || 0} · Bias {selected.bias_score || 0}
+                </p>
+                {selected.ai_review_notes && <p className="text-sm text-foreground">{selected.ai_review_notes}</p>}
+              </div>
+              <Button
+                onClick={() => runAiReview(selected)}
+                variant="outline"
+                className="w-full"
+                disabled={reviewingId === selected.id}
+              >
+                {reviewingId === selected.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+                Run AI Integrity Review
+              </Button>
               <Button
                 onClick={() => toggleActive(selected)}
                 variant={selected.active ? 'default' : 'outline'}

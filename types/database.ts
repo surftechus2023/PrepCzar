@@ -857,6 +857,17 @@ export interface Database {
           back_fr: string;
           active: boolean;
           reviewed: boolean;
+          integrity_status: 'pending' | 'passed' | 'needs_improvement' | 'needs_human_review' | 'needs_metadata' | 'failed' | 'rejected';
+          integrity_score: number;
+          blueprint_alignment_score: number;
+          difficulty_quality_score: number;
+          content_quality_score: number;
+          bias_score: number;
+          ai_review_notes: string | null;
+          quality_flags: Json;
+          reviewed_by_ai: boolean;
+          ai_review_model: string | null;
+          ai_reviewed_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -884,6 +895,17 @@ export interface Database {
           back_fr?: string;
           active?: boolean;
           reviewed?: boolean;
+          integrity_status?: 'pending' | 'passed' | 'needs_improvement' | 'needs_human_review' | 'needs_metadata' | 'failed' | 'rejected';
+          integrity_score?: number;
+          blueprint_alignment_score?: number;
+          difficulty_quality_score?: number;
+          content_quality_score?: number;
+          bias_score?: number;
+          ai_review_notes?: string | null;
+          quality_flags?: Json;
+          reviewed_by_ai?: boolean;
+          ai_review_model?: string | null;
+          ai_reviewed_at?: string | null;
         };
         Update: {
           id?: string;
@@ -910,6 +932,17 @@ export interface Database {
           back_fr?: string;
           active?: boolean;
           reviewed?: boolean;
+          integrity_status?: 'pending' | 'passed' | 'needs_improvement' | 'needs_human_review' | 'needs_metadata' | 'failed' | 'rejected';
+          integrity_score?: number;
+          blueprint_alignment_score?: number;
+          difficulty_quality_score?: number;
+          content_quality_score?: number;
+          bias_score?: number;
+          ai_review_notes?: string | null;
+          quality_flags?: Json;
+          reviewed_by_ai?: boolean;
+          ai_review_model?: string | null;
+          ai_reviewed_at?: string | null;
         };
       };
       case_vignettes: {
@@ -946,6 +979,17 @@ export interface Database {
           coaching_feedback_fr: string;
           active: boolean;
           reviewed: boolean;
+          integrity_status: 'pending' | 'passed' | 'needs_improvement' | 'needs_human_review' | 'needs_metadata' | 'failed' | 'rejected';
+          integrity_score: number;
+          blueprint_alignment_score: number;
+          difficulty_quality_score: number;
+          content_quality_score: number;
+          bias_score: number;
+          ai_review_notes: string | null;
+          quality_flags: Json;
+          reviewed_by_ai: boolean;
+          ai_review_model: string | null;
+          ai_reviewed_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -981,6 +1025,17 @@ export interface Database {
           coaching_feedback_fr?: string;
           active?: boolean;
           reviewed?: boolean;
+          integrity_status?: 'pending' | 'passed' | 'needs_improvement' | 'needs_human_review' | 'needs_metadata' | 'failed' | 'rejected';
+          integrity_score?: number;
+          blueprint_alignment_score?: number;
+          difficulty_quality_score?: number;
+          content_quality_score?: number;
+          bias_score?: number;
+          ai_review_notes?: string | null;
+          quality_flags?: Json;
+          reviewed_by_ai?: boolean;
+          ai_review_model?: string | null;
+          ai_reviewed_at?: string | null;
         };
         Update: {
           id?: string;
@@ -1015,6 +1070,17 @@ export interface Database {
           coaching_feedback_fr?: string;
           active?: boolean;
           reviewed?: boolean;
+          integrity_status?: 'pending' | 'passed' | 'needs_improvement' | 'needs_human_review' | 'needs_metadata' | 'failed' | 'rejected';
+          integrity_score?: number;
+          blueprint_alignment_score?: number;
+          difficulty_quality_score?: number;
+          content_quality_score?: number;
+          bias_score?: number;
+          ai_review_notes?: string | null;
+          quality_flags?: Json;
+          reviewed_by_ai?: boolean;
+          ai_review_model?: string | null;
+          ai_reviewed_at?: string | null;
         };
       };
       subscriptions: {
