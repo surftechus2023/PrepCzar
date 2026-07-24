@@ -73,7 +73,16 @@ Generation language: ${input.language}.
 Flashcard requirements:
 - Concise front.
 - Complete back.
+- Keep back_en learner-facing only. Do not include labels or metadata such as "Rationale:", "Blueprint linkage:", "Topic/Subtopic:", "Applied knowledge statement:", "Difficulty:", "Cognitive level:", or "Blueprint reference:" inside back_en.
+- Put all blueprint metadata only in the separate JSON fields, not in the learner-facing answer.
+- Keep back_en to 35-90 words so it fits on the review card.
+- The front and back must directly test this exact applied knowledge statement: "${input.context.appliedKnowledgeStatement}".
+- Do not substitute a related but different ethics, assessment, intervention, or diagnosis topic.
+- If the selected statement is about termination, the card must focus on termination; if it is about confidentiality, the card must focus on confidentiality; do not mix blueprint objectives.
+- Medium flashcards must require applying the objective to a practice scenario, not recalling a definition.
+- Hard flashcards must require reasoning, prioritization, ethical/professional judgment, or best-next-step thinking.
 - Include blueprint linkage, topic/subtopic, applied knowledge statement, difficulty, cognitive level, and blueprint reference.
+- Set learning_objective and applied_knowledge_statement exactly to the selected applied knowledge statement.
 - Use English fields always; include Spanish and French fields when language is "all", "es", or "fr".
 - Save-ready content only; no markdown fences.
 

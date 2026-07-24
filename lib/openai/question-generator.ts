@@ -79,6 +79,8 @@ export const questionGenerationInputSchema = z.object({
   percentageWeight: z.number().optional().nullable(),
   competencySection: z.string().optional().nullable(),
   appliedKnowledgeStatement: z.string().optional().nullable(),
+  cacrepCoreAreas: z.array(z.string()).optional(),
+  blueprintVersion: z.string().optional().nullable(),
   cognitiveLevelGuidance: z.string().optional().nullable(),
   sampleStyleGuidance: z.string().optional().nullable(),
   intendedCognitiveLevel: z.string().optional().nullable(),
@@ -208,6 +210,8 @@ Topic:
 - subtopic official blueprint text: ${parsedInput.subtopicOfficialBlueprintText || 'Not provided'}
 - learning objective: ${parsedInput.learningObjective}
 - blueprint reference text: ${parsedInput.blueprintReferenceText || parsedInput.subtopicOfficialBlueprintText || parsedInput.topicOfficialBlueprintText || 'Not provided'}
+- CACREP core area mapping: ${parsedInput.cacrepCoreAreas?.join(', ') || 'Not provided'}
+- blueprint version: ${parsedInput.blueprintVersion || 'stored-blueprint'}
 
 Social Work blueprint item, if selected:
 - blueprint item id: ${parsedInput.socialWorkBlueprintItemId || 'Not provided'}
@@ -226,6 +230,15 @@ Cognitive level mix: ${formatMix(parsedInput.cognitiveLevelMix)}
 
 Exam-track-specific generation rules:
 ${formatExamTrackRulesForPrompt(parsedInput.examTrackName)}
+
+NCE-specific rules when exam track is NCE:
+- Treat the selected NCE domain, knowledge/skill/task objective, learning objective, official weight, and CACREP mapping as the source of truth.
+- Never generate from generic counseling knowledge alone.
+- Generate one NCE-quality examination item that specifically measures the selected official blueprint objective.
+- Prefer applied professional counseling scenarios requiring clinical reasoning, assessment judgment, treatment planning, ethics, counseling intervention, or professional decision-making.
+- Avoid simple memorization, definition recall, trivia, and recognition-only questions.
+- Do not shift to a different NCE objective even when it is related.
+- Case-style stems should be especially grounded in assessment, areas of clinical focus, treatment planning, or counseling skills and interventions.
 
 ASWB-style Social Work rules when a Social Work blueprint item is provided:
 - Treat the selected applied knowledge statement as the source of truth.
@@ -268,6 +281,7 @@ Strict alignment and quality rules:
 - Each question must test one clear concept.
 - Each question must have exactly four answer options.
 - There must be one clear best answer only.
+- Randomize the correct answer position across A, B, C, and D. Do not place the correct answer in the same letter repeatedly.
 - Distractors must be plausible, exam-track appropriate, and not obviously wrong.
 - Avoid "all of the above" and "none of the above."
 - Do not use duplicate answer choices.
@@ -302,7 +316,7 @@ Return exactly this JSON shape:
       "option_d": "string",
       "option_d_es": "string",
       "option_d_fr": "string",
-      "correct_option": "A",
+      "correct_option": "A | B | C | D",
       "correct_rationale": "string",
       "correct_rationale_es": "string",
       "correct_rationale_fr": "string",

@@ -217,7 +217,7 @@ export default function AdminBlueprintsPage() {
                     {domain.code}. {domain.title}
                   </CardTitle>
                   <p className="text-sm text-muted-foreground">
-                    Weight: {domain.weight_percent ?? 'Not set'}% · {competenciesByDomain[domain.id]?.length || 0} competencies
+                    Weight: {domain.weight_percent ?? 'Not set'}% · Scored items: {(domain as any).scored_item_count ?? 'Not set'} · {competenciesByDomain[domain.id]?.length || 0} competencies
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">

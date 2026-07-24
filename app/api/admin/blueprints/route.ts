@@ -61,12 +61,22 @@ export async function GET(req: NextRequest) {
     }
 
     const selectedTrackId = trackId || tracksRes.data?.[0]?.id || null;
-    const domainsRes = selectedTrackId
-      ? await supabaseAdmin
+    const selectedTrack = (tracksRes.data || []).find((track: any) => track.id === selectedTrackId);
+    let domainsQuery = selectedTrackId
+      ? supabaseAdmin
           .from('blueprint_domains')
           .select('*')
           .eq('exam_track_id', selectedTrackId)
-          .order('display_order')
+      : null;
+
+    if (domainsQuery && selectedTrack?.slug === 'nce') {
+      domainsQuery = domainsQuery
+        .eq('active', true)
+        .eq('is_placeholder', false);
+    }
+
+    const domainsRes = selectedTrackId
+      ? await domainsQuery!.order('display_order')
       : { data: [], error: null };
 
     if (domainsRes.error) {

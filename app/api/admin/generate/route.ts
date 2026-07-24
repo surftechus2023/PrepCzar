@@ -33,6 +33,7 @@ import {
 import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 import { translateMcqFields } from '@/lib/content-translation';
+import { randomizeMcqOptions } from '@/lib/content-generation/mcq-option-randomizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -151,6 +152,56 @@ function rejectIfWeakText(text: string, type: GenerateRequest['type']) {
   return null;
 }
 
+const OBJECTIVE_STOP_WORDS = new Set([
+  'about',
+  'across',
+  'and',
+  'with',
+  'within',
+  'social',
+  'work',
+  'worker',
+  'client',
+  'clients',
+  'practice',
+  'knowledge',
+  'statement',
+  'appropriate',
+  'professional',
+  'including',
+  'methods',
+  'techniques',
+]);
+
+function objectiveTokens(text: string) {
+  return normalize(text)
+    .split(' ')
+    .filter((token) => token.length >= 5 && !OBJECTIVE_STOP_WORDS.has(token));
+}
+
+function rejectIfObjectiveDrift(content: string, appliedKnowledgeStatement: string) {
+  const tokens = Array.from(new Set(objectiveTokens(appliedKnowledgeStatement)));
+  if (tokens.length < 2) return null;
+
+  const normalizedContent = normalize(content);
+  const matched = tokens.filter((token) => normalizedContent.includes(token));
+  const requiredMatches = Math.min(3, Math.max(2, Math.ceil(tokens.length * 0.35)));
+
+  if (matched.length < requiredMatches) {
+    return `Generated item did not clearly target the selected applied knowledge statement: ${appliedKnowledgeStatement}`;
+  }
+
+  return null;
+}
+
+function cleanFlashcardBack(text: string) {
+  return String(text || '')
+    .replace(/\s*(Rationale:|Best answer:|Other options[^.]*:).*$/is, '')
+    .replace(/\s*(Blueprint linkage:|Topic\/Subtopic:|Applied knowledge statement:|Difficulty:|Cognitive level:|Blueprint reference:).*$/is, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export async function GET(req: NextRequest) {
   try {
     const adminUser = await requireAdmin(req);
@@ -261,6 +312,8 @@ export async function POST(req: NextRequest) {
           percentageWeight: blueprintContext.majorContentWeight,
           competencySection: blueprintContext.competencySection,
           appliedKnowledgeStatement: blueprintContext.appliedKnowledgeStatement,
+          cacrepCoreAreas: blueprintContext.cacrepCoreAreas,
+          blueprintVersion: blueprintContext.blueprintVersion,
           cognitiveLevelGuidance: blueprintContext.cognitiveLevelTarget,
           sampleStyleGuidance: blueprintContext.questionWritingGuidelines,
           intendedCognitiveLevel: blueprintContext.cognitiveLevelTarget,
@@ -303,21 +356,8 @@ export async function POST(req: NextRequest) {
               option_d_en: question.option_d,
               rationale_en: question.correct_rationale,
             });
-
-          rows.push({
-            exam_track_id: body!.examTrackId,
-            topic_id: blueprintContext.topicId,
-            subtopic_id: blueprintContext.subtopicId || null,
-            social_work_blueprint_item_id: blueprintContext.socialWorkBlueprintItemId || null,
-            blueprint_content_area: blueprintContext.majorContentArea,
-            blueprint_competency_section: blueprintContext.competencySection,
-            applied_knowledge_statement: blueprintContext.appliedKnowledgeStatement,
-            question_writing_guideline: blueprintContext.questionWritingGuidelines,
-            intended_cognitive_level: blueprintContext.cognitiveLevelTarget,
-            blueprint_reference_text: blueprintContext.officialBlueprintText,
-            question_en: question.question,
-            question_es: question.question_es || fallbackTranslations?.question_es || '',
-            question_fr: question.question_fr || fallbackTranslations?.question_fr || '',
+          const randomizedOptions = randomizeMcqOptions({
+            correct_option: question.correct_option,
             option_a_en: question.option_a,
             option_a_es: question.option_a_es || fallbackTranslations?.option_a_es || '',
             option_a_fr: question.option_a_fr || fallbackTranslations?.option_a_fr || '',
@@ -330,15 +370,52 @@ export async function POST(req: NextRequest) {
             option_d_en: question.option_d,
             option_d_es: question.option_d_es || fallbackTranslations?.option_d_es || '',
             option_d_fr: question.option_d_fr || fallbackTranslations?.option_d_fr || '',
-            correct_option: question.correct_option.toLowerCase(),
-            rationale_en: question.correct_rationale,
-            rationale_es: question.correct_rationale_es || fallbackTranslations?.rationale_es || '',
-            rationale_fr: question.correct_rationale_fr || fallbackTranslations?.rationale_fr || '',
-            correct_rationale_en: question.correct_rationale,
             option_a_rationale_en: question.option_a_rationale,
             option_b_rationale_en: question.option_b_rationale,
             option_c_rationale_en: question.option_c_rationale,
             option_d_rationale_en: question.option_d_rationale,
+          });
+
+          rows.push({
+            exam_track_id: body!.examTrackId,
+            topic_id: blueprintContext.topicId,
+            subtopic_id: blueprintContext.subtopicId || null,
+            blueprint_domain_id: blueprintContext.blueprintDomainId || null,
+            blueprint_competency_id: blueprintContext.blueprintCompetencyId || null,
+            blueprint_objective_id: blueprintContext.blueprintObjectiveId || null,
+            social_work_blueprint_item_id: blueprintContext.socialWorkBlueprintItemId || null,
+            blueprint_content_area: blueprintContext.majorContentArea,
+            blueprint_competency_section: blueprintContext.competencySection,
+            applied_knowledge_statement: blueprintContext.appliedKnowledgeStatement,
+            question_writing_guideline: blueprintContext.questionWritingGuidelines,
+            intended_cognitive_level: blueprintContext.cognitiveLevelTarget,
+            blueprint_reference_text: blueprintContext.officialBlueprintText,
+            cacrep_core_areas: blueprintContext.cacrepCoreAreas,
+            blueprint_version: blueprintContext.blueprintVersion,
+            question_en: question.question,
+            question_es: question.question_es || fallbackTranslations?.question_es || '',
+            question_fr: question.question_fr || fallbackTranslations?.question_fr || '',
+            option_a_en: randomizedOptions.option_a_en,
+            option_a_es: randomizedOptions.option_a_es,
+            option_a_fr: randomizedOptions.option_a_fr,
+            option_b_en: randomizedOptions.option_b_en,
+            option_b_es: randomizedOptions.option_b_es,
+            option_b_fr: randomizedOptions.option_b_fr,
+            option_c_en: randomizedOptions.option_c_en,
+            option_c_es: randomizedOptions.option_c_es,
+            option_c_fr: randomizedOptions.option_c_fr,
+            option_d_en: randomizedOptions.option_d_en,
+            option_d_es: randomizedOptions.option_d_es,
+            option_d_fr: randomizedOptions.option_d_fr,
+            correct_option: randomizedOptions.correct_option,
+            rationale_en: question.correct_rationale,
+            rationale_es: question.correct_rationale_es || fallbackTranslations?.rationale_es || '',
+            rationale_fr: question.correct_rationale_fr || fallbackTranslations?.rationale_fr || '',
+            correct_rationale_en: question.correct_rationale,
+            option_a_rationale_en: randomizedOptions.option_a_rationale_en,
+            option_b_rationale_en: randomizedOptions.option_b_rationale_en,
+            option_c_rationale_en: randomizedOptions.option_c_rationale_en,
+            option_d_rationale_en: randomizedOptions.option_d_rationale_en,
             test_taking_tip_en: question.test_taking_tip,
             cognitive_level: question.cognitive_level,
             difficulty: question.difficulty,
@@ -379,10 +456,12 @@ export async function POST(req: NextRequest) {
         quantityGenerated += cards.length;
         const rows = cards.flatMap((card) => {
           const reason = rejectIfWeakText(card.front_en, 'flashcards');
+          const cleanedBack = cleanFlashcardBack(card.back_en);
+          const driftReason = rejectIfObjectiveDrift(`${card.front_en}\n${cleanedBack}`, blueprintContext.appliedKnowledgeStatement);
           const hash = duplicateHash(body!.examTrackId, 'flashcards', card.front_en);
-          if (reason || seenHashes.has(hash)) {
+          if (reason || driftReason || seenHashes.has(hash)) {
             quantityRejected += 1;
-            rejectedReasons.push(reason || 'Duplicate flashcard candidate.');
+            rejectedReasons.push(reason || driftReason || 'Duplicate flashcard candidate.');
             return [];
           }
           seenHashes.add(hash);
@@ -391,19 +470,25 @@ export async function POST(req: NextRequest) {
             exam_name: examName,
             topic_id: blueprintContext.topicId,
             subtopic_id: blueprintContext.subtopicId || null,
-            blueprint_reference_text: card.blueprint_reference,
-            source_topic: card.topic,
-            learning_objective: card.learning_objective,
-            difficulty: card.difficulty,
-            cognitive_level: card.cognitive_level,
+            blueprint_domain_id: blueprintContext.blueprintDomainId || null,
+            blueprint_competency_id: blueprintContext.blueprintCompetencyId || null,
+            blueprint_objective_id: blueprintContext.blueprintObjectiveId || null,
+            blueprint_reference_text: blueprintContext.officialBlueprintText || card.blueprint_reference,
+            cacrep_core_areas: blueprintContext.cacrepCoreAreas,
+            blueprint_version: blueprintContext.blueprintVersion,
+            source_topic: blueprintContext.majorContentArea || card.topic,
+            learning_objective: blueprintContext.learningObjective || card.learning_objective,
+            applied_knowledge_statement: blueprintContext.appliedKnowledgeStatement || card.applied_knowledge_statement,
+            difficulty: blueprintContext.difficultyTarget || card.difficulty,
+            cognitive_level: blueprintContext.cognitiveLevelTarget || card.cognitive_level,
             generation_batch_id: batchId,
             duplicate_hash: hash,
             front_en: card.front_en,
             front_es: card.front_es,
             front_fr: card.front_fr,
-            back_en: card.back_en,
-            back_es: card.back_es,
-            back_fr: card.back_fr,
+            back_en: cleanedBack,
+            back_es: cleanFlashcardBack(card.back_es),
+            back_fr: cleanFlashcardBack(card.back_fr),
             active: false,
             reviewed: false,
           }];
@@ -419,10 +504,11 @@ export async function POST(req: NextRequest) {
         quantityGenerated += vignettes.length;
         const rows = vignettes.flatMap((vignette) => {
           const reason = rejectIfWeakText(vignette.case_en, 'vignettes');
+          const driftReason = rejectIfObjectiveDrift(`${vignette.case_en}\n${vignette.prompt_en}\n${vignette.ideal_answer_en}`, blueprintContext.appliedKnowledgeStatement);
           const hash = duplicateHash(body!.examTrackId, 'vignettes', vignette.case_en);
-          if (reason || seenHashes.has(hash)) {
+          if (reason || driftReason || seenHashes.has(hash)) {
             quantityRejected += 1;
-            rejectedReasons.push(reason || 'Duplicate vignette candidate.');
+            rejectedReasons.push(reason || driftReason || 'Duplicate vignette candidate.');
             return [];
           }
           seenHashes.add(hash);
@@ -431,11 +517,17 @@ export async function POST(req: NextRequest) {
             exam_name: examName,
             topic_id: blueprintContext.topicId,
             subtopic_id: blueprintContext.subtopicId || null,
-            blueprint_reference_text: vignette.blueprint_reference,
-            source_topic: vignette.topic,
-            learning_objective: vignette.learning_objective,
-            difficulty: vignette.difficulty,
-            cognitive_level: vignette.cognitive_level,
+            blueprint_domain_id: blueprintContext.blueprintDomainId || null,
+            blueprint_competency_id: blueprintContext.blueprintCompetencyId || null,
+            blueprint_objective_id: blueprintContext.blueprintObjectiveId || null,
+            blueprint_reference_text: blueprintContext.officialBlueprintText || vignette.blueprint_reference,
+            cacrep_core_areas: blueprintContext.cacrepCoreAreas,
+            blueprint_version: blueprintContext.blueprintVersion,
+            source_topic: blueprintContext.majorContentArea || vignette.topic,
+            learning_objective: blueprintContext.learningObjective || vignette.learning_objective,
+            applied_knowledge_statement: blueprintContext.appliedKnowledgeStatement || vignette.applied_knowledge_statement,
+            difficulty: blueprintContext.difficultyTarget || vignette.difficulty,
+            cognitive_level: blueprintContext.cognitiveLevelTarget || vignette.cognitive_level,
             expected_answer_elements: vignette.expected_answer_elements,
             scoring_rubric: vignette.scoring_rubric,
             generation_batch_id: batchId,

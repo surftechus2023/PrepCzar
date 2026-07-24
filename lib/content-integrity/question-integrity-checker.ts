@@ -81,6 +81,8 @@ export function getBlueprintReferenceText(question: Question, context: QuestionC
     context.subtopic?.learning_objective,
     question.blueprint_reference_text,
     question.question_writing_guideline,
+    Array.isArray((question as any).cacrep_core_areas) ? `CACREP core areas: ${(question as any).cacrep_core_areas.join(', ')}` : '',
+    (question as any).blueprint_version ? `Blueprint version: ${(question as any).blueprint_version}` : '',
     context.socialWorkBlueprintItem?.sample_style_guidance,
     question.applied_knowledge_statement,
     question.blueprint_competency_section,

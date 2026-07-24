@@ -121,6 +121,7 @@ export interface Database {
           description: string;
           official_blueprint_text: string;
           weight_percent: number | null;
+          scored_item_count: number | null;
           display_order: number;
           active: boolean;
           is_placeholder: boolean;
@@ -135,6 +136,7 @@ export interface Database {
           description?: string;
           official_blueprint_text?: string;
           weight_percent?: number | null;
+          scored_item_count?: number | null;
           display_order?: number;
           active?: boolean;
           is_placeholder?: boolean;
@@ -149,6 +151,7 @@ export interface Database {
           description?: string;
           official_blueprint_text?: string;
           weight_percent?: number | null;
+          scored_item_count?: number | null;
           display_order?: number;
           active?: boolean;
           is_placeholder?: boolean;
@@ -236,6 +239,46 @@ export interface Database {
           active?: boolean;
           is_placeholder?: boolean;
           updated_at?: string;
+        };
+      };
+      cacrep_core_areas: {
+        Row: {
+          id: string;
+          code: string;
+          title: string;
+          display_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          title: string;
+          display_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          code?: string;
+          title?: string;
+          display_order?: number;
+          created_at?: string;
+        };
+      };
+      blueprint_objective_cacrep_mappings: {
+        Row: {
+          objective_id: string;
+          cacrep_core_area_id: string;
+          created_at: string;
+        };
+        Insert: {
+          objective_id: string;
+          cacrep_core_area_id: string;
+          created_at?: string;
+        };
+        Update: {
+          objective_id?: string;
+          cacrep_core_area_id?: string;
+          created_at?: string;
         };
       };
       question_blueprint_guidelines: {
@@ -428,6 +471,8 @@ export interface Database {
           blueprint_content_area: string | null;
           blueprint_competency_section: string | null;
           applied_knowledge_statement: string | null;
+          cacrep_core_areas: string[];
+          blueprint_version: string | null;
           question_writing_guideline: string | null;
           intended_cognitive_level: string | null;
           blueprint_reference_text: string | null;
@@ -524,6 +569,8 @@ export interface Database {
           blueprint_content_area?: string | null;
           blueprint_competency_section?: string | null;
           applied_knowledge_statement?: string | null;
+          cacrep_core_areas?: string[];
+          blueprint_version?: string | null;
           question_writing_guideline?: string | null;
           intended_cognitive_level?: string | null;
           blueprint_reference_text?: string | null;
@@ -619,6 +666,8 @@ export interface Database {
           blueprint_content_area?: string | null;
           blueprint_competency_section?: string | null;
           applied_knowledge_statement?: string | null;
+          cacrep_core_areas?: string[];
+          blueprint_version?: string | null;
           question_writing_guideline?: string | null;
           intended_cognitive_level?: string | null;
           blueprint_reference_text?: string | null;
@@ -843,8 +892,11 @@ export interface Database {
           blueprint_competency_id: string | null;
           blueprint_objective_id: string | null;
           blueprint_reference_text: string | null;
+          cacrep_core_areas: string[];
+          blueprint_version: string | null;
           source_topic: string | null;
           learning_objective: string | null;
+          applied_knowledge_statement: string | null;
           difficulty: 'medium' | 'hard' | null;
           cognitive_level: string | null;
           generation_batch_id: string | null;
@@ -881,8 +933,11 @@ export interface Database {
           blueprint_competency_id?: string | null;
           blueprint_objective_id?: string | null;
           blueprint_reference_text?: string | null;
+          cacrep_core_areas?: string[];
+          blueprint_version?: string | null;
           source_topic?: string | null;
           learning_objective?: string | null;
+          applied_knowledge_statement?: string | null;
           difficulty?: 'medium' | 'hard' | null;
           cognitive_level?: string | null;
           generation_batch_id?: string | null;
@@ -918,8 +973,11 @@ export interface Database {
           blueprint_competency_id?: string | null;
           blueprint_objective_id?: string | null;
           blueprint_reference_text?: string | null;
+          cacrep_core_areas?: string[];
+          blueprint_version?: string | null;
           source_topic?: string | null;
           learning_objective?: string | null;
+          applied_knowledge_statement?: string | null;
           difficulty?: 'medium' | 'hard' | null;
           cognitive_level?: string | null;
           generation_batch_id?: string | null;
@@ -957,8 +1015,11 @@ export interface Database {
           blueprint_competency_id: string | null;
           blueprint_objective_id: string | null;
           blueprint_reference_text: string | null;
+          cacrep_core_areas: string[];
+          blueprint_version: string | null;
           source_topic: string | null;
           learning_objective: string | null;
+          applied_knowledge_statement: string | null;
           difficulty: 'medium' | 'hard' | null;
           cognitive_level: string | null;
           expected_answer_elements: Json;
@@ -1003,8 +1064,11 @@ export interface Database {
           blueprint_competency_id?: string | null;
           blueprint_objective_id?: string | null;
           blueprint_reference_text?: string | null;
+          cacrep_core_areas?: string[];
+          blueprint_version?: string | null;
           source_topic?: string | null;
           learning_objective?: string | null;
+          applied_knowledge_statement?: string | null;
           difficulty?: 'medium' | 'hard' | null;
           cognitive_level?: string | null;
           expected_answer_elements?: Json;
@@ -1048,8 +1112,11 @@ export interface Database {
           blueprint_competency_id?: string | null;
           blueprint_objective_id?: string | null;
           blueprint_reference_text?: string | null;
+          cacrep_core_areas?: string[];
+          blueprint_version?: string | null;
           source_topic?: string | null;
           learning_objective?: string | null;
+          applied_knowledge_statement?: string | null;
           difficulty?: 'medium' | 'hard' | null;
           cognitive_level?: string | null;
           expected_answer_elements?: Json;

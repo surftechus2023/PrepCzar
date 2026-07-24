@@ -179,9 +179,14 @@ function FlashcardsContent() {
   }
 
   function getBack(card: Flashcard) {
-    return lang === 'es' ? card.back_es || card.back_en
+    const text = lang === 'es' ? card.back_es || card.back_en
          : lang === 'fr' ? card.back_fr || card.back_en
          : card.back_en;
+    return text
+      .replace(/\s*(Rationale:|Best answer:|Other options[^.]*:).*$/is, '')
+      .replace(/\s*(Blueprint linkage:|Topic\/Subtopic:|Applied knowledge statement:|Difficulty:|Cognitive level:|Blueprint reference:).*$/is, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   function handleFlip() {
@@ -422,12 +427,14 @@ function FlashcardsContent() {
                   WebkitBackfaceVisibility: 'hidden',
                   transform: 'rotateY(180deg)',
                 }}
-                className="absolute inset-0 bg-primary/5 border border-primary/30 rounded-2xl p-8 flex flex-col items-center justify-center shadow-card"
+                className="absolute inset-0 bg-primary/5 border border-primary/30 rounded-2xl p-6 sm:p-8 flex flex-col items-center shadow-card overflow-hidden"
               >
-                <Badge className="mb-4 bg-primary text-primary-foreground">Answer</Badge>
-                <p className="text-center text-foreground text-lg leading-relaxed">
-                  {getBack(currentCard)}
-                </p>
+                <Badge className="mb-4 shrink-0 bg-primary text-primary-foreground">Answer</Badge>
+                <div className="w-full flex-1 overflow-y-auto pr-1">
+                  <p className="text-center text-foreground text-base sm:text-lg leading-relaxed">
+                    {getBack(currentCard)}
+                  </p>
+                </div>
               </div>
             </div>
           </div>

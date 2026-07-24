@@ -94,13 +94,13 @@ const RULES: ExamTrackGenerationRules[] = [
   {
     key: 'nce',
     label: 'NCE',
-    recallMaxPercent: 20,
-    applicationPercent: 50,
-    analysisPercent: 30,
+    recallMaxPercent: 0,
+    applicationPercent: 55,
+    analysisPercent: 45,
     minimumDifficultyQualityScore: 75,
     preferScenarioBased: true,
-    focusAreas: ['counseling process', 'ethics', 'human growth', 'career development', 'assessment', 'group counseling', 'helping relationships', 'research and program evaluation'],
-    avoid: ['generic counseling definitions when scenario application is appropriate'],
+    focusAreas: ['official NCE domain', 'knowledge/skill/task objective', 'CACREP core area', 'ethics', 'assessment', 'diagnosis', 'clinical focus', 'treatment planning', 'counseling skills', 'professional judgment'],
+    avoid: ['generic counseling definitions', 'simple memorization', 'trivia', 'recognition-only questions', 'questions not tied to the selected NCE objective'],
   },
   {
     key: 'ccm',

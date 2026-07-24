@@ -96,7 +96,13 @@ Generation language: ${input.language}.
 
 Case vignette requirements:
 - Scenario, prompt, expected answer elements, scoring rubric, ideal response, and stored coaching feedback.
+- The scenario, prompt, rubric, ideal response, and coaching feedback must directly test this exact applied knowledge statement: "${input.context.appliedKnowledgeStatement}".
+- Do not substitute a related but different ethics, assessment, intervention, or diagnosis topic.
+- If the selected statement is about termination, the vignette must focus on termination; if it is about confidentiality, the vignette must focus on confidentiality; do not mix blueprint objectives.
+- Medium vignettes must require applying the objective to a practice scenario.
+- Hard vignettes must require reasoning, prioritization, ethical/professional judgment, risk assessment, treatment planning, or best-next-step thinking.
 - Include blueprint linkage, topic/subtopic, applied knowledge statement, difficulty, cognitive level, and blueprint reference.
+- Set learning_objective and applied_knowledge_statement exactly to the selected applied knowledge statement.
 - Use English fields always; include Spanish and French fields when language is "all", "es", or "fr".
 - Save-ready content only; no markdown fences.
 

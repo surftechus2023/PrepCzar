@@ -5,6 +5,11 @@ export interface BlueprintContext {
   topicId: string;
   subtopicId?: string | null;
   socialWorkBlueprintItemId?: string | null;
+  blueprintDomainId?: string | null;
+  blueprintCompetencyId?: string | null;
+  blueprintObjectiveId?: string | null;
+  cacrepCoreAreas: string[];
+  blueprintVersion: string;
   examTrack: string;
   officialExamDescription: string;
   officialSourceURL: string;
@@ -123,6 +128,7 @@ export async function buildBlueprintContext(
   let domain: any = null;
   let competency: any = null;
   let objective: any = null;
+  let cacrepCoreAreas: string[] = [];
 
   if (topic.blueprint_domain_id) {
     const { data, error } = await supabaseAdmin
@@ -155,6 +161,19 @@ export async function buildBlueprintContext(
 
     if (error) throw new Error(error.message);
     objective = data;
+
+    const { data: mappings, error: mappingsError } = await (supabaseAdmin as any)
+      .from('blueprint_objective_cacrep_mappings')
+      .select('cacrep_core_area:cacrep_core_areas(title)')
+      .eq('objective_id', subtopic.blueprint_objective_id);
+
+    if (mappingsError && !/schema cache|does not exist|could not find|relation/i.test(mappingsError.message)) {
+      throw new Error(mappingsError.message);
+    }
+
+    cacrepCoreAreas = ((mappings || []) as any[])
+      .map((mapping) => mapping.cacrep_core_area?.title)
+      .filter(Boolean);
   }
 
   const cognitiveLevelTarget = normalizeCognitiveLevel(input.cognitiveLevelTarget);
@@ -173,6 +192,11 @@ export async function buildBlueprintContext(
     topicId: topic.id,
     subtopicId: subtopic?.id || effectiveSubtopicId,
     socialWorkBlueprintItemId: blueprintItem?.id || null,
+    blueprintDomainId: domain?.id || topic.blueprint_domain_id || null,
+    blueprintCompetencyId: competency?.id || subtopic?.blueprint_competency_id || null,
+    blueprintObjectiveId: objective?.id || subtopic?.blueprint_objective_id || null,
+    cacrepCoreAreas,
+    blueprintVersion: isSocialWorkTrack(`${trackName} ${trackRes.data.slug || ''}`) ? 'ASWB-stored-blueprint' : trackRes.data.slug === 'nce' ? 'NCE-uploaded-blueprint-2026' : 'stored-blueprint',
     examTrack: trackName,
     officialExamDescription: text(trackRes.data.official_exam_description),
     officialSourceURL: text(trackRes.data.official_source_url),
@@ -208,7 +232,7 @@ export async function buildBlueprintContext(
   const requiredFields: Array<[string, string | number | null]> = [
     ['official source URL', context.officialSourceURL],
     ['exam description', context.officialExamDescription],
-    ['ASWB exam level', context.aswbExamLevel],
+    ['exam level', context.aswbExamLevel],
     ['major content area', context.majorContentArea],
     ['content weight', context.majorContentWeight],
     ['competency section', context.competencySection],
@@ -248,6 +272,8 @@ export function formatBlueprintContextForPrompt(context: BlueprintContext) {
 - Competency section: ${context.competencySection || 'MISSING'}
 - Applied knowledge statement: ${context.appliedKnowledgeStatement || 'MISSING'}
 - Learning objective: ${context.learningObjective || 'MISSING'}
+- CACREP core area mapping: ${context.cacrepCoreAreas.join(', ') || 'MISSING'}
+- Blueprint version: ${context.blueprintVersion}
 - Topic description: ${context.topicDescription || 'MISSING'}
 - Subtopic description: ${context.subtopicDescription || 'MISSING'}
 - Topic blueprint text: ${context.topicOfficialBlueprintText || 'MISSING'}

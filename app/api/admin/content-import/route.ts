@@ -10,6 +10,7 @@ import { parsePdfBuffer } from '@/lib/content-import/parse-pdf';
 import { parseTextContent } from '@/lib/content-import/parse-text';
 import type { ImportedContentType, ImportCleanupMode, ParsedImportItem } from '@/lib/content-import/types';
 import { translateMcqFields } from '@/lib/content-translation';
+import { randomizeMcqOptions } from '@/lib/content-generation/mcq-option-randomizer';
 import { getSupabaseAdmin, requireAdmin } from '@/lib/server-auth';
 import { enforceRateLimit } from '@/lib/security/rate-limit';
 
@@ -76,9 +77,9 @@ async function getBlueprintDefaults(
   input: { topicId: string; subtopicId?: string | null; socialWorkBlueprintItemId?: string | null }
 ) {
   const [topicRes, subtopicRes, blueprintRes] = await Promise.all([
-    supabaseAdmin.from('topics').select('title, official_blueprint_text, official_weight_percent').eq('id', input.topicId).maybeSingle(),
+    supabaseAdmin.from('topics').select('title, official_blueprint_text, official_weight_percent, blueprint_domain_id').eq('id', input.topicId).maybeSingle(),
     input.subtopicId
-      ? supabaseAdmin.from('subtopics').select('title, learning_objective, official_blueprint_text').eq('id', input.subtopicId).maybeSingle()
+      ? supabaseAdmin.from('subtopics').select('title, learning_objective, official_blueprint_text, blueprint_competency_id, blueprint_objective_id').eq('id', input.subtopicId).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     input.socialWorkBlueprintItemId
       ? supabaseAdmin.from('social_work_blueprint_items').select('*').eq('id', input.socialWorkBlueprintItemId).maybeSingle()
@@ -87,10 +88,24 @@ async function getBlueprintDefaults(
 
   const error = topicRes.error || subtopicRes.error || blueprintRes.error;
   if (error) throw new Error(error.message);
+  let cacrepCoreAreas: string[] = [];
+  if (subtopicRes.data?.blueprint_objective_id) {
+    const { data: mappings, error: mappingsError } = await (supabaseAdmin as any)
+      .from('blueprint_objective_cacrep_mappings')
+      .select('cacrep_core_area:cacrep_core_areas(title)')
+      .eq('objective_id', subtopicRes.data.blueprint_objective_id);
+    if (mappingsError && !/schema cache|does not exist|could not find|relation/i.test(mappingsError.message)) {
+      throw new Error(mappingsError.message);
+    }
+    cacrepCoreAreas = ((mappings || []) as any[])
+      .map((mapping) => mapping.cacrep_core_area?.title)
+      .filter(Boolean);
+  }
   return {
     topic: topicRes.data,
     subtopic: subtopicRes.data,
     blueprintItem: blueprintRes.data as any,
+    cacrepCoreAreas,
   };
 }
 
@@ -296,6 +311,11 @@ export async function PUT(req: NextRequest) {
       exam_track_id: body.examTrackId,
       topic_id: body.topicId,
       subtopic_id: body.subtopicId || null,
+      blueprint_domain_id: defaults.topic?.blueprint_domain_id || null,
+      blueprint_competency_id: defaults.subtopic?.blueprint_competency_id || null,
+      blueprint_objective_id: defaults.subtopic?.blueprint_objective_id || null,
+      cacrep_core_areas: defaults.cacrepCoreAreas,
+      blueprint_version: defaults.cacrepCoreAreas.length ? 'NCE-uploaded-blueprint-2026' : null,
       import_batch_id: batchId,
       source_filename: body.filename || null,
       reviewed: false,
@@ -315,6 +335,21 @@ export async function PUT(req: NextRequest) {
           option_d_en: item.fields.option_d || '',
           rationale_en: item.fields.rationale || '',
         });
+        const randomizedOptions = randomizeMcqOptions({
+          correct_option: item.fields.correct_option || 'a',
+          option_a_en: item.fields.option_a || '',
+          option_a_es: translations.option_a_es,
+          option_a_fr: translations.option_a_fr,
+          option_b_en: item.fields.option_b || '',
+          option_b_es: translations.option_b_es,
+          option_b_fr: translations.option_b_fr,
+          option_c_en: item.fields.option_c || '',
+          option_c_es: translations.option_c_es,
+          option_c_fr: translations.option_c_fr,
+          option_d_en: item.fields.option_d || '',
+          option_d_es: translations.option_d_es,
+          option_d_fr: translations.option_d_fr,
+        });
 
         rows.push({
           ...common,
@@ -329,19 +364,19 @@ export async function PUT(req: NextRequest) {
           question_en: item.fields.question,
           question_es: translations.question_es,
           question_fr: translations.question_fr,
-          option_a_en: item.fields.option_a,
-          option_a_es: translations.option_a_es,
-          option_a_fr: translations.option_a_fr,
-          option_b_en: item.fields.option_b,
-          option_b_es: translations.option_b_es,
-          option_b_fr: translations.option_b_fr,
-          option_c_en: item.fields.option_c,
-          option_c_es: translations.option_c_es,
-          option_c_fr: translations.option_c_fr,
-          option_d_en: item.fields.option_d || '',
-          option_d_es: translations.option_d_es,
-          option_d_fr: translations.option_d_fr,
-          correct_option: item.fields.correct_option || 'a',
+          option_a_en: randomizedOptions.option_a_en,
+          option_a_es: randomizedOptions.option_a_es,
+          option_a_fr: randomizedOptions.option_a_fr,
+          option_b_en: randomizedOptions.option_b_en,
+          option_b_es: randomizedOptions.option_b_es,
+          option_b_fr: randomizedOptions.option_b_fr,
+          option_c_en: randomizedOptions.option_c_en,
+          option_c_es: randomizedOptions.option_c_es,
+          option_c_fr: randomizedOptions.option_c_fr,
+          option_d_en: randomizedOptions.option_d_en,
+          option_d_es: randomizedOptions.option_d_es,
+          option_d_fr: randomizedOptions.option_d_fr,
+          correct_option: randomizedOptions.correct_option,
           rationale_en: item.fields.rationale || '',
           rationale_es: translations.rationale_es,
           rationale_fr: translations.rationale_fr,
@@ -372,7 +407,8 @@ export async function PUT(req: NextRequest) {
         ...common,
         blueprint_reference_text: body.blueprintReferenceText || defaults.subtopic?.official_blueprint_text || defaults.topic?.official_blueprint_text || null,
         source_topic: defaults.topic?.title || null,
-        learning_objective: body.learningObjective || defaults.subtopic?.learning_objective || null,
+        learning_objective: body.appliedKnowledgeStatement || body.learningObjective || defaults.blueprintItem?.applied_knowledge_statement || defaults.subtopic?.learning_objective || null,
+        applied_knowledge_statement: body.appliedKnowledgeStatement || defaults.blueprintItem?.applied_knowledge_statement || defaults.subtopic?.learning_objective || null,
         difficulty: body.difficulty,
         cognitive_level: body.cognitiveLevel || 'application',
         front_en: item.fields.front,
@@ -397,7 +433,8 @@ export async function PUT(req: NextRequest) {
         ...common,
         blueprint_reference_text: body.blueprintReferenceText || defaults.subtopic?.official_blueprint_text || defaults.topic?.official_blueprint_text || null,
         source_topic: defaults.topic?.title || null,
-        learning_objective: body.learningObjective || defaults.subtopic?.learning_objective || null,
+        learning_objective: body.appliedKnowledgeStatement || body.learningObjective || defaults.blueprintItem?.applied_knowledge_statement || defaults.subtopic?.learning_objective || null,
+        applied_knowledge_statement: body.appliedKnowledgeStatement || defaults.blueprintItem?.applied_knowledge_statement || defaults.subtopic?.learning_objective || null,
         difficulty: body.difficulty,
         cognitive_level: body.cognitiveLevel || 'application',
         case_en: item.fields.case,

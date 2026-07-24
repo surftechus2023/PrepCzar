@@ -59,6 +59,8 @@ function asQuestion(question: GeneratedQuestion, metadata: ImprovementMetadata):
     blueprint_content_area: metadata.socialWorkBlueprintItem?.major_content_area || null,
     blueprint_competency_section: metadata.socialWorkBlueprintItem?.competency_section || null,
     applied_knowledge_statement: metadata.socialWorkBlueprintItem?.applied_knowledge_statement || null,
+    cacrep_core_areas: [],
+    blueprint_version: null,
     question_writing_guideline: metadata.socialWorkBlueprintItem?.sample_style_guidance || null,
     intended_cognitive_level: metadata.intendedCognitiveLevel || question.cognitive_level || null,
     blueprint_reference_text: metadata.blueprintReferenceText || metadata.socialWorkBlueprintItem?.official_blueprint_text || metadata.subtopicOfficialBlueprintText || metadata.topicOfficialBlueprintText || null,

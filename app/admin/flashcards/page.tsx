@@ -244,6 +244,12 @@ export default function AdminFlashcardsPage() {
                 <p className="text-xs text-muted-foreground uppercase mb-1">Back (EN)</p>
                 <p className="text-foreground">{selected.back_en}</p>
               </div>
+              {(selected.applied_knowledge_statement || selected.learning_objective) && (
+                <div className="p-4 bg-muted/40 rounded-lg">
+                  <p className="text-xs text-muted-foreground uppercase mb-1">Blueprint Learning Objective</p>
+                  <p className="text-sm text-foreground">{selected.applied_knowledge_statement || selected.learning_objective}</p>
+                </div>
+              )}
               <div className="p-4 border border-border rounded-lg space-y-2">
                 <div className="flex flex-wrap gap-2">
                   {integrityBadge(selected)}
