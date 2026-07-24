@@ -34,6 +34,41 @@ const flexibleStringSchema = z.preprocess((value) => {
   }
 }, z.string().optional());
 
+const flexibleStringArraySchema = z.preprocess((value) => {
+  if (value === null || value === undefined || value === '') return [];
+  if (Array.isArray(value)) {
+    return value.map((item) => typeof item === 'string' ? item : JSON.stringify(item));
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(/\n|;|\.\s+(?=[A-Z0-9])/)
+      .map((item) => item.replace(/^[-*\d.)\s]+/, '').trim())
+      .filter(Boolean);
+  }
+  try {
+    return [JSON.stringify(value)];
+  } catch {
+    return [String(value)];
+  }
+}, z.array(z.string()).default([]));
+
+const finalStatusSchema = z.preprocess((value) => {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (normalized === 'approved' || normalized === 'approve') return 'passed';
+  if (normalized === 'revise' || normalized === 'revision_required') return 'needs_improvement';
+  if (normalized === 'human_review') return 'needs_human_review';
+  if (normalized === 'metadata_missing') return 'needs_metadata';
+  return normalized;
+}, z.enum(['passed', 'needs_improvement', 'needs_human_review', 'needs_metadata', 'rejected']));
+
+const committeeVoteSchema = z.preprocess((value) => {
+  const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (normalized === 'approved') return 'approve';
+  if (normalized === 'needs_revision' || normalized === 'needs_improvement' || normalized === 'revision_required') return 'revise';
+  if (normalized === 'rejected') return 'reject';
+  return normalized;
+}, z.enum(['approve', 'revise', 'reject']));
+
 const reviewerSchema = z.object({
   score: scoreSchema.optional(),
   blueprint_alignment_score: scoreSchema.optional(),
@@ -47,9 +82,9 @@ const reviewerSchema = z.object({
   detected_cognitive_level: z.string().optional(),
   explanation: z.string().default(''),
   similarity_notes: flexibleStringSchema,
-  failure_reasons: z.array(z.string()).default([]),
-  rewrite_recommendations: z.array(z.string()).default([]),
-  bias_flags: z.array(z.string()).default([]),
+  failure_reasons: flexibleStringArraySchema,
+  rewrite_recommendations: flexibleStringArraySchema,
+  bias_flags: flexibleStringArraySchema,
 });
 
 const finalReviewSchema = z.object({
@@ -60,18 +95,18 @@ const finalReviewSchema = z.object({
   final_bias_score: scoreSchema,
   final_security_score: scoreSchema,
   final_integrity_score: scoreSchema,
-  final_status: z.enum(['passed', 'needs_improvement', 'needs_human_review', 'needs_metadata', 'rejected']),
+  final_status: finalStatusSchema,
   explanation: z.string().default(''),
-  failure_reasons: z.array(z.string()).default([]),
-  rewrite_recommendations: z.array(z.string()).default([]),
+  failure_reasons: flexibleStringArraySchema,
+  rewrite_recommendations: flexibleStringArraySchema,
 });
 
 const committeeReviewSchema = z.object({
   role: z.string(),
-  vote: z.enum(['approve', 'revise', 'reject']),
+  vote: committeeVoteSchema,
   score: scoreSchema,
   reason: z.string(),
-  required_changes: z.array(z.string()).default([]),
+  required_changes: flexibleStringArraySchema,
 });
 
 const rewrittenQuestionSchema = z.object({
